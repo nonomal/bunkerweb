@@ -24,7 +24,8 @@
     "id": "http-port",
     "label": "HTTP port",
     "regex": "^\\d+$",
-    "type": "text"
+    "type": "text",
+    "multiple": "listen-http-ports"
   },
   "HTTPS_PORT": {
     "context": "global",
@@ -33,7 +34,8 @@
     "id": "https-port",
     "label": "HTTPS port",
     "regex": "^\\d+$",
-    "type": "text"
+    "type": "text",
+    "multiple": "listen-https-ports"
   },
   "MULTISITE": {
     "context": "global",
@@ -50,7 +52,7 @@
     "help": "List of the virtual hosts served by bunkerweb.",
     "id": "server-name",
     "label": "Server name",
-    "regex": "^((\\S{1,255})(?!.*\\s\\2(\\s|$)))?(\\s(\\S{1,255})(?!.*\\s\\5(\\s|$)))*$",
+    "regex": "^((?!.*\\.\\.)([^\\s/]{1,256})(?!.*\\s\\2(\\s|$)))?(\\s(((?!.*\\.\\.))([^\\s/]{1,256})(?!.*\\s\\7(\\s|$))))*$",
     "type": "text"
   },
   "WORKER_PROCESSES": {
@@ -115,6 +117,15 @@
     "id": "dns-resolvers",
     "label": "DNS resolvers",
     "regex": "^(?! )(( *[^ ]+)(?!.*\\2))*$",
+    "type": "text"
+  },
+  "WORKERLOCK_MEMORY_SIZE": {
+    "context": "global",
+    "default": "48k",
+    "help": "Size of lua_shared_dict for initialization workers",
+    "id": "workerlock-memory-size",
+    "label": "Initialization Workerlock memory size",
+    "regex": "^\\d+[kKmMgG]?$",
     "type": "text"
   },
   "DATASTORE_MEMORY_SIZE": {
@@ -260,7 +271,8 @@
     "id": "listen-stream-port",
     "label": "Listen stream port",
     "regex": "^[0-9]+$",
-    "type": "text"
+    "type": "text",
+    "multiple": "listen-stream-ports"
   },
   "LISTEN_STREAM_PORT_SSL": {
     "context": "multisite",
@@ -269,12 +281,22 @@
     "id": "listen-stream-port-ssl",
     "label": "Listen stream port ssl",
     "regex": "^[0-9]+$",
-    "type": "text"
+    "type": "text",
+    "multiple": "listen-stream-ports-ssl"
+  },
+  "USE_TCP": {
+    "context": "multisite",
+    "default": "yes",
+    "help": "TCP listen (stream).",
+    "id": "use-tcp",
+    "label": "Listen TCP",
+    "regex": "^(yes|no)$",
+    "type": "check"
   },
   "USE_UDP": {
     "context": "multisite",
     "default": "no",
-    "help": "UDP listen instead of TCP (stream).",
+    "help": "UDP listen (stream).",
     "id": "use-udp",
     "label": "Listen UDP",
     "regex": "^(yes|no)$",
@@ -317,13 +339,32 @@
       "emerg"
     ]
   },
-  "OVERRIDE_INSTANCES": {
+  "BUNKERWEB_INSTANCES": {
     "context": "global",
-    "default": "",
-    "help": "List of BunkerWeb instances separated with spaces (format : fqdn-or-ip:5000 fqdn-or-ip:5000)",
-    "id": "override-instances",
-    "label": "Override instances",
+    "default": "127.0.0.1",
+    "help": "List of BunkerWeb instances separated with spaces (format : fqdn-or-ip:5000 http://fqdn-or-ip:5000)",
+    "id": "bunkerweb-instances",
+    "label": "BunkerWeb instances",
     "regex": "^.*$",
     "type": "text"
+  },
+  "USE_TEMPLATE": {
+    "context": "multisite",
+    "default": "",
+    "help": "Config template to use that will override the default values of specific settings.",
+    "id": "use-template",
+    "label": "Use template",
+    "regex": "^.*$",
+    "type": "text"
+  },
+  "SECURITY_MODE": {
+    "context": "multisite",
+    "default": "block",
+    "help": "Defines the response to threats: \"detect\" to monitor and log, or \"block\" to prevent access and log incidents.",
+    "id": "security-mode",
+    "label": "Security mode",
+    "regex": "^(detect|block)$",
+    "type": "select",
+    "select": ["detect", "block"]
   }
 }

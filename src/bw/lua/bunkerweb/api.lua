@@ -15,6 +15,7 @@ local api = class("api")
 local datastore = cdatastore:new()
 local logger = clogger:new("API")
 
+local get_country = utils.get_country
 local get_variable = utils.get_variable
 local is_ip_in_networks = utils.is_ip_in_networks
 -- local run = shell.run
@@ -92,19 +93,57 @@ api.global.GET["^/ping$"] = function(self)
 	return self:response(HTTP_OK, "success", "pong")
 end
 
-api.global.POST["^/reload$"] = function(self)
-	-- Check config
-	logger:log(NOTICE, "Checking Nginx configuration")
-	local status = execute("nginx -t")
-	if status ~= 0 then
-		return self:response(HTTP_INTERNAL_SERVER_ERROR, "error", "config check failed")
+api.global.GET["^/health$"] = function(self)
+	-- Check if reload indicator file exists
+	local f = open("/var/tmp/bunkerweb_reloading", "r")
+	if f then
+		f:close()
+		return self:response(HTTP_OK, "success", "ok")
 	end
-	logger:log(NOTICE, "Nginx configuration is valid, reloading Nginx")
+
+	local data, err = get_variable("IS_LOADING", false)
+	if not data then
+		logger:log(ERR, "can't get IS_LOADING variable : " .. err)
+		return self:response(HTTP_OK, "success", "loading")
+	end
+	if data == "yes" then
+		return self:response(HTTP_OK, "success", "loading")
+	end
+	return self:response(HTTP_OK, "success", "ok")
+end
+
+api.global.POST["^/reload"] = function(self)
+	-- Get test argument
+	local args = ngx.req.get_uri_args()
+	local test_arg = args.test or "yes"
+
+	if test_arg ~= "no" then
+		-- Check Nginx configuration
+		logger:log(NOTICE, "Checking Nginx configuration")
+		local status = execute("/usr/sbin/nginx -t")
+		if status ~= 0 then
+			return self:response(HTTP_INTERNAL_SERVER_ERROR, "error", "config check failed")
+		end
+		logger:log(NOTICE, "Nginx configuration is valid")
+	end
+
+	-- Reload Nginx
+	logger:log(NOTICE, "Reloading Nginx")
 	-- Send HUP signal to master process
 	local ok, err = kill(get_master_pid(), "HUP")
 	if not ok then
 		return self:response(HTTP_INTERNAL_SERVER_ERROR, "error", "err = " .. err)
 	end
+
+	-- Create temporary file to indicate reconfiguration
+	local file, err = open("/var/tmp/bunkerweb_reloading", "w")
+	if file then
+		file:write(tostring(os.time()))
+		file:close()
+	else
+		logger:log(ERR, "Failed to create reload indicator file: " .. err)
+	end
+
 	return self:response(HTTP_OK, "success", "reload successful")
 end
 
@@ -209,7 +248,7 @@ api.global.POST["^/ban$"] = function(self)
 	if not data then
 		local data_file = get_body_file()
 		if data_file then
-			local file, err = io.open(data_file)
+			local file, err = open(data_file)
 			if not file then
 				return self:response(HTTP_INTERNAL_SERVER_ERROR, "error", err)
 			end
@@ -225,6 +264,8 @@ api.global.POST["^/ban$"] = function(self)
 		ip = "",
 		exp = 86400,
 		reason = "manual",
+		service = "unknown",
+		country = "local",
 	}
 	ban.ip = ip["ip"]
 	if ip["exp"] then
@@ -233,11 +274,22 @@ api.global.POST["^/ban$"] = function(self)
 	if ip["reason"] then
 		ban.reason = ip["reason"]
 	end
+	if ip["service"] then
+		ban.service = ip["service"]
+	end
+	local country, err = get_country(ban["ip"])
+	if not country then
+		country = "unknown"
+		logger:log(ERR, "can't get country code " .. err)
+	end
+	ban.country = country
 	datastore:set(
 		"bans_ip_" .. ban["ip"],
 		encode({
 			reason = ban["reason"],
+			service = ban["service"],
 			date = os.time(),
+			country = ban["country"],
 		}),
 		ban["exp"]
 	)
@@ -267,12 +319,16 @@ api.global.GET["^/bans$"] = function(self)
 			local ban_data
 			ok, ban_data = pcall(decode, result)
 			if not ok then
-				ban_data = { reason = result, date = -1 }
+				ban_data = { reason = result, service = "unknown", date = -1 }
 			end
-			table.insert(
-				data,
-				{ ip = k:sub(9, #k), reason = ban_data["reason"], date = ban_data["date"], exp = math.floor(ttl) }
-			)
+			table.insert(data, {
+				ip = k:sub(9, #k),
+				reason = ban_data["reason"],
+				service = ban_data["service"],
+				date = ban_data["date"],
+				country = ban_data["country"],
+				exp = math.floor(ttl),
+			})
 		end
 	end
 	return self:response(HTTP_OK, "success", data)

@@ -2,18 +2,18 @@
 
 from io import BytesIO
 from itertools import chain
+from mimetypes import guess_type
 from os import getenv, sep
 from os.path import join
 from pathlib import Path
 from stat import S_IEXEC
 from sys import exit as sys_exit, path as sys_path
-from threading import Lock
+from time import sleep
 from uuid import uuid4
 from json import JSONDecodeError, load as json_load, loads
 from shutil import copytree, rmtree
-from tarfile import open as tar_open
-from traceback import format_exc
-from zipfile import ZipFile
+from tarfile import TarError, open as tar_open
+from zipfile import BadZipFile, ZipFile
 
 for deps_path in [
     join(sep, "usr", "share", "bunkerweb", *paths)
@@ -29,6 +29,7 @@ for deps_path in [
 
 from magic import Magic
 from requests import get
+from requests.exceptions import ConnectionError
 
 from common_utils import bytes_hash  # type: ignore
 from Database import Database  # type: ignore
@@ -37,7 +38,7 @@ from logger import setup_logger  # type: ignore
 
 EXTERNAL_PLUGINS_DIR = Path(sep, "etc", "bunkerweb", "plugins")
 TMP_DIR = Path(sep, "var", "tmp", "bunkerweb", "plugins")
-LOGGER = setup_logger("Jobs.download-plugins", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("Jobs.download-plugins")
 status = 0
 
 
@@ -97,60 +98,92 @@ try:
     # Loop on URLs
     LOGGER.info(f"Downloading external plugins from {plugin_urls}...")
     for plugin_url in plugin_urls.split(" "):
-        # Download Plugin file
-        try:
-            if plugin_urls.startswith("file://"):
-                content = Path(plugin_urls[7:]).read_bytes()
-            else:
-                content = b""
-                resp = get(
-                    plugin_url,
-                    headers={"User-Agent": "BunkerWeb"},
-                    stream=True,
-                    timeout=30,
-                )
+        with BytesIO() as content:
+            # Download Plugin file
+            try:
+                if plugin_urls.startswith("file://"):
+                    content = Path(plugin_urls[7:]).read_bytes()
+                else:
+                    max_retries = 3
+                    retry_count = 0
+                    while retry_count < max_retries:
+                        try:
+                            resp = get(plugin_url, headers={"User-Agent": "BunkerWeb"}, stream=True, timeout=10)
+                            break
+                        except ConnectionError as e:
+                            retry_count += 1
+                            if retry_count == max_retries:
+                                raise e
+                            LOGGER.warning(f"Connection refused, retrying in 3 seconds... ({retry_count}/{max_retries})")
+                            sleep(3)
 
-                if resp.status_code != 200:
-                    LOGGER.warning(f"Got status code {resp.status_code}, skipping...")
+                    if resp.status_code != 200:
+                        LOGGER.warning(f"Got status code {resp.status_code}, skipping...")
+                        continue
+
+                    # Iterate over the response content in chunks
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            content.write(chunk)
+
+                    content.seek(0)
+            except BaseException as e:
+                LOGGER.error(f"Exception while downloading plugin(s) from {plugin_url} :\n{e}")
+                status = 2
+                continue
+
+            # Extract it to tmp folder
+            temp_dir = TMP_DIR.joinpath(str(uuid4()))
+            try:
+                temp_dir.mkdir(parents=True, exist_ok=True)
+
+                # Detect file type
+                file_type = Magic(mime=True).from_buffer(content.getvalue())
+                LOGGER.debug(f"Detected file type: {file_type}")
+
+                # Fallback to file extension detection
+                if file_type == "application/octet-stream":
+                    file_type = guess_type(plugin_url)[0] or "application/octet-stream"
+                    LOGGER.debug(f"Guessed file type from URL: {file_type}")
+
+                content.seek(0)
+
+                # Handle ZIP files
+                if file_type == "application/zip" or plugin_url.endswith(".zip"):
+                    try:
+                        with ZipFile(content) as zf:
+                            zf.extractall(path=temp_dir)
+                        LOGGER.info(f"Successfully extracted ZIP file to {temp_dir}")
+                    except BadZipFile as e:
+                        LOGGER.error(f"Invalid ZIP file: {e}")
+                        continue
+
+                # Handle TAR files (all compression types)
+                elif file_type.startswith("application/x-tar") or plugin_url.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")):
+                    try:
+                        # Detect the appropriate tar mode
+                        tar_mode = "r"
+                        if plugin_url.endswith(".gz") or file_type == "application/gzip":
+                            tar_mode = "r:gz"
+                        elif plugin_url.endswith(".bz2"):
+                            tar_mode = "r:bz2"
+                        elif plugin_url.endswith(".xz"):
+                            tar_mode = "r:xz"
+
+                        with tar_open(fileobj=content, mode=tar_mode) as tar:
+                            tar.extractall(path=temp_dir)
+                        LOGGER.info(f"Successfully extracted TAR file to {temp_dir}")
+                    except TarError as e:
+                        LOGGER.error(f"Invalid TAR file: {e}")
+                        continue
+
+                else:
+                    LOGGER.error(f"Unknown file type for {plugin_url}, either ZIP or TAR is supported, skipping...")
                     continue
 
-                # Iterate over the response content in chunks
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        content += chunk
-        except:
-            LOGGER.error(f"Exception while downloading plugin(s) from {plugin_url} :\n{format_exc()}")
-            status = 2
-            continue
-
-        # Extract it to tmp folder
-        temp_dir = TMP_DIR.joinpath(str(uuid4()))
-        try:
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            file_type = Magic(mime=True).from_buffer(content)
-
-            if file_type == "application/zip":
-                with ZipFile(BytesIO(content)) as zf:
-                    zf.extractall(path=temp_dir)
-            elif file_type == "application/gzip":
-                with tar_open(fileobj=BytesIO(content), mode="r:gz") as tar:
-                    try:
-                        tar.extractall(path=temp_dir, filter="data")
-                    except TypeError:
-                        tar.extractall(path=temp_dir)
-            elif file_type == "application/x-tar":
-                with tar_open(fileobj=BytesIO(content), mode="r") as tar:
-                    try:
-                        tar.extractall(path=temp_dir, filter="data")
-                    except TypeError:
-                        tar.extractall(path=temp_dir)
-            else:
-                LOGGER.error(f"Unknown file type for {plugin_url}, either zip or tar are supported, skipping...")
+            except Exception as e:
+                LOGGER.error(f"Exception while decompressing plugin(s) from {plugin_url}:\n{e}")
                 continue
-        except:
-            LOGGER.error(f"Exception while decompressing plugin(s) from {plugin_url} :\n{format_exc()}")
-            status = 2
-            continue
 
         # Install plugins
         try:
@@ -160,8 +193,8 @@ try:
                         plugin_nbr += 1
                 except FileExistsError:
                     LOGGER.warning(f"Skipping installation of plugin {plugin_path.parent.name} (already installed)")
-        except:
-            LOGGER.error(f"Exception while installing plugin(s) from {plugin_url} :\n{format_exc()}")
+        except BaseException as e:
+            LOGGER.error(f"Exception while installing plugin(s) from {plugin_url} :\n{e}")
             status = 2
 
     if not plugin_nbr:
@@ -198,14 +231,11 @@ try:
         external_plugins.append(plugin_data)
         external_plugins_ids.append(plugin_data["id"])
 
-    lock = Lock()
-
     for plugin in db.get_plugins(_type="external", with_data=True):
         if plugin["method"] != "scheduler" and plugin["id"] not in external_plugins_ids:
             external_plugins.append(plugin)
 
-    with lock:
-        err = db.update_external_plugins(external_plugins)
+    err = db.update_external_plugins(external_plugins)
 
     if err:
         LOGGER.error(f"Couldn't update external plugins to database: {err}")
@@ -215,11 +245,10 @@ try:
 
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running download-plugins.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running download-plugins.py :\n{e}")
 
-for plugin_tmp in TMP_DIR.glob("*"):
-    rmtree(plugin_tmp, ignore_errors=True)
+rmtree(TMP_DIR, ignore_errors=True)
 
 sys_exit(status)

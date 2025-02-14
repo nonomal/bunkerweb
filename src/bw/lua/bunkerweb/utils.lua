@@ -5,6 +5,7 @@ local mmdb = require "bunkerweb.mmdb"
 
 local cjson = require "cjson"
 local ipmatcher = require "resty.ipmatcher"
+local random = require "resty.random"
 local resolver = require "resty.dns.resolver"
 local session = require "resty.session"
 
@@ -26,8 +27,8 @@ local parse_ipv6 = ipmatcher.parse_ipv6
 local open = io.open
 local encode = cjson.encode
 local decode = cjson.decode
+local bytes = random.bytes
 local char = string.char
-local random = math.random
 local session_start = session.start
 local tonumber = tonumber
 
@@ -288,8 +289,9 @@ end
 
 utils.get_reason = function(ctx)
 	-- ngx.ctx
+	local security_mode = utils.get_security_mode(ctx)
 	if ctx and ctx.bw and ctx.bw.reason then
-		return ctx.bw.reason, ctx.bw.reason_data or {}
+		return ctx.bw.reason, ctx.bw.reason_data or {}, security_mode
 	end
 	-- ngx.var
 	local var_reason = var.reason
@@ -302,11 +304,22 @@ utils.get_reason = function(ctx)
 				reason_data = data
 			end
 		end
-		return var_reason, reason_data
+		return var_reason, reason_data, security_mode
 	end
 	-- os.getenv
 	if os.getenv("REASON") == "modsecurity" then
-		return "modsecurity", {}
+		local env_reason_data = os.getenv("REASON_DATA")
+		local reason_data = {}
+		if env_reason_data and env_reason_data ~= "" and env_reason_data ~= "none" then
+			if env_reason_data:sub(1, 1) == " " then
+				env_reason_data = env_reason_data:sub(2)
+			end
+			reason_data["ids"] = {}
+			for rule_id in env_reason_data:gmatch("%S+") do
+				table.insert(reason_data["ids"], rule_id)
+			end
+		end
+		return "modsecurity", reason_data, security_mode
 	end
 	-- datastore ban
 	local ip
@@ -321,7 +334,7 @@ utils.get_reason = function(ctx)
 		if ok then
 			banned = ban_data["reason"]
 		end
-		return banned, {}
+		return banned, {}, security_mode
 	end
 	-- unknown
 	if ngx.status == utils.get_deny_status() then
@@ -330,10 +343,11 @@ utils.get_reason = function(ctx)
 	return nil
 end
 
-utils.set_reason = function(reason, reason_data, ctx)
+utils.set_reason = function(reason, reason_data, ctx, security_mode)
 	if ctx and ctx.bw then
 		ctx.bw.reason = reason or "unknown"
 		ctx.bw.reason_data = reason_data or {}
+		ctx.bw.security_mode = security_mode
 	end
 	if var.reason then
 		var.reason = reason
@@ -541,23 +555,26 @@ end
 
 utils.rand = function(nb, no_numbers)
 	local charset = {}
-	-- lowers, uppers and numbers
 	if not no_numbers then
 		for i = 48, 57 do
 			table.insert(charset, char(i))
-		end
+		end -- Numbers
 	end
 	for i = 65, 90 do
 		table.insert(charset, char(i))
-	end
+	end -- Uppercase
 	for i = 97, 122 do
 		table.insert(charset, char(i))
-	end
-	local result = ""
+	end -- Lowercase
+
+	local result = {}
 	for _ = 1, nb do
-		result = result .. charset[random(1, #charset)]
+		local byte = bytes(1, true):byte() -- Get a secure random byte
+		local index = (byte % #charset) + 1 -- Map byte to charset index
+		table.insert(result, charset[index])
 	end
-	return result
+
+	return table.concat(result)
 end
 
 utils.get_deny_status = function()
@@ -570,6 +587,14 @@ utils.get_deny_status = function()
 		return tonumber(variables["global"]["DENY_HTTP_STATUS"])
 	end
 	return 444
+end
+
+utils.get_security_mode = function(ctx)
+	local security_mode, _ = utils.get_variable("SECURITY_MODE", true, ctx)
+	if not security_mode then
+		return "block"
+	end
+	return security_mode
 end
 
 utils.get_session = function(ctx)
@@ -714,11 +739,13 @@ utils.is_banned = function(ip)
 	return false, "not banned"
 end
 
-utils.add_ban = function(ip, reason, ttl)
+utils.add_ban = function(ip, reason, ttl, service, country)
 	-- Set on local datastore
 	local ban_data = encode({
 		reason = reason,
+		service = service or "unknown",
 		date = os.time(),
+		country = country or "local",
 	})
 	local ok, err = datastore:set("bans_ip_" .. ip, ban_data, ttl)
 	if not ok then

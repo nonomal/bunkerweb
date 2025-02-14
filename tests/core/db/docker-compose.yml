@@ -2,11 +2,28 @@ version: "3.5"
 
 services:
   bw:
-    image: bunkerity/bunkerweb:1.5.10
+    image: bunkerity/bunkerweb:1.6.0-beta
     pull_policy: never
     labels:
       - "bunkerweb.INSTANCE=yes"
     environment:
+      API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
+    networks:
+      bw-universe:
+      bw-services:
+        ipv4_address: 192.168.0.2
+
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.6.0-beta
+    pull_policy: never
+    depends_on:
+      - bw
+    volumes:
+      - bw-data:/data/lib
+      - bw-volume:/usr/share/bunkerweb
+      - ./init/plugins:/data/plugins
+    environment:
+      BUNKERWEB_INSTANCES: "bw"
       SERVER_NAME: "bwadm.example.com"
       API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
       MULTISITE: "no"
@@ -16,8 +33,8 @@ services:
       SEND_ANONYMOUS_REPORT: "no"
       USE_REVERSE_PROXY: "yes"
       REVERSE_PROXY_HOST: "http://app1:8080"
-      REVERSE_PROXY_URL: "/"
       LOG_LEVEL: "info"
+      CUSTOM_LOG_LEVEL: "debug"
       CUSTOM_CONF_MODSEC_test_custom_conf: 'SecRule REQUEST_FILENAME "@rx ^/db" "id:10000,ctl:ruleRemoveByTag=attack-generic,ctl:ruleRemoveByTag=attack-protocol,nolog"'
       CUSTOM_CONF_SERVER_HTTP_ready: |
         location /ready {
@@ -28,37 +45,10 @@ services:
             ngx.exit(ngx.HTTP_OK)
           }
         }
-    networks:
-      bw-universe:
-      bw-services:
-        ipv4_address: 192.168.0.2
-
-  bw-scheduler:
-    image: bunkerity/bunkerweb-scheduler:1.5.10
-    pull_policy: never
-    depends_on:
-      - bw
-      - bw-docker
-    volumes:
-      - bw-data:/data/lib
-      - bw-volume:/usr/share/bunkerweb
-      - ./init/plugins:/data/plugins
-    environment:
-      DOCKER_HOST: "tcp://bw-docker:2375"
-      LOG_LEVEL: "debug"
       # ? DATABASE settings
       DATABASE_URI: "sqlite:////var/lib/bunkerweb/db.sqlite3"
     networks:
       - bw-universe
-      - bw-docker
-
-  bw-docker:
-    image: tecnativa/docker-socket-proxy:nightly
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      CONTAINERS: "1"
-    networks:
       - bw-docker
 
   app1:

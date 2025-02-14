@@ -3,9 +3,10 @@
 from os import getenv, sep
 from os.path import join
 from pathlib import Path
+from subprocess import DEVNULL, run
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 from base64 import b64decode
+from tempfile import NamedTemporaryFile
 from typing import Tuple, Union
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
@@ -16,8 +17,8 @@ from common_utils import bytes_hash  # type: ignore
 from jobs import Job  # type: ignore
 from logger import setup_logger  # type: ignore
 
-LOGGER = setup_logger("CUSTOM-CERT", getenv("LOG_LEVEL", "INFO"))
-JOB = Job(LOGGER)
+LOGGER = setup_logger("CUSTOM-CERT")
+JOB = Job(LOGGER, __file__)
 
 
 def check_cert(cert_file: Union[Path, bytes], key_file: Union[Path, bytes], first_server: str) -> Tuple[bool, Union[str, BaseException]]:
@@ -36,6 +37,29 @@ def check_cert(cert_file: Union[Path, bytes], key_file: Union[Path, bytes], firs
                 return False, f"Key file {key_file} is not a valid file, ignoring the custom certificate"
             key_file = key_file.read_bytes()
 
+        # Write to temporary files for OpenSSL validation
+        with NamedTemporaryFile(delete=False) as cert_temp, NamedTemporaryFile(delete=False) as key_temp:
+            try:
+                cert_temp.write(cert_file)
+                key_temp.write(key_file)
+                cert_temp.flush()
+                key_temp.flush()
+
+                # Validate the certificate using OpenSSL
+                result = run(
+                    ["openssl", "x509", "-checkend", "86400", "-noout", "-in", cert_temp.name],
+                    stdin=DEVNULL,
+                    stderr=DEVNULL,
+                    check=False,
+                )
+
+                if result.returncode != 0:
+                    return False, "Certificate is invalid or will expire within the next 24 hours."
+            finally:
+                # Clean up temporary files
+                Path(cert_temp.name).unlink(missing_ok=True)
+                Path(key_temp.name).unlink(missing_ok=True)
+
         cert_hash = bytes_hash(cert_file)
         old_hash = JOB.cache_hash("cert.pem", service_id=first_server)
         if old_hash != cert_hash:
@@ -43,6 +67,7 @@ def check_cert(cert_file: Union[Path, bytes], key_file: Union[Path, bytes], firs
             cached, err = JOB.cache_file("cert.pem", cert_file, service_id=first_server, checksum=cert_hash, delete_file=False)
             if not cached:
                 LOGGER.error(f"Error while caching custom-cert cert.pem file : {err}")
+                return False, err
 
         key_hash = bytes_hash(key_file)
         old_hash = JOB.cache_hash("key.pem", service_id=first_server)
@@ -51,6 +76,7 @@ def check_cert(cert_file: Union[Path, bytes], key_file: Union[Path, bytes], firs
             cached, err = JOB.cache_file("key.pem", key_file, service_id=first_server, checksum=key_hash, delete_file=False)
             if not cached:
                 LOGGER.error(f"Error while caching custom-key key.pem file : {err}")
+                return False, err
 
         return ret, ""
     except BaseException as e:
@@ -84,13 +110,14 @@ try:
 
             LOGGER.info(f"Service {first_server} is using custom SSL certificates, checking ...")
 
+            cert_priority = getenv(f"{first_server}_CUSTOM_SSL_CERT_PRIORITY", getenv("CUSTOM_SSL_CERT_PRIORITY", "file"))
             cert_file = getenv(f"{first_server}_CUSTOM_SSL_CERT", getenv("CUSTOM_SSL_CERT", ""))
             key_file = getenv(f"{first_server}_CUSTOM_SSL_KEY", getenv("CUSTOM_SSL_KEY", ""))
             cert_data = getenv(f"{first_server}_CUSTOM_SSL_CERT_DATA", getenv("CUSTOM_SSL_CERT_DATA", ""))
             key_data = getenv(f"{first_server}_CUSTOM_SSL_KEY_DATA", getenv("CUSTOM_SSL_KEY_DATA", ""))
 
             if (cert_file or cert_data) and (key_file or key_data):
-                if cert_file:
+                if (cert_priority == "file" or not cert_data) and cert_file:
                     cert_file = Path(cert_file)
                 else:
                     try:
@@ -98,9 +125,10 @@ try:
                     except BaseException:
                         LOGGER.exception(f"Error while decoding cert data, skipping server {first_server}...")
                         skipped_servers.append(first_server)
+                        status = 2
                         continue
 
-                if key_file:
+                if (cert_priority == "file" or not key_data) and key_file:
                     key_file = Path(key_file)
                 else:
                     try:
@@ -108,6 +136,7 @@ try:
                     except BaseException:
                         LOGGER.exception(f"Error while decoding key data, skipping server {first_server}...")
                         skipped_servers.append(first_server)
+                        status = 2
                         continue
 
                 LOGGER.info(f"Checking certificate for {first_server} ...")
@@ -115,10 +144,12 @@ try:
                 if isinstance(err, BaseException):
                     LOGGER.error(f"Exception while checking {first_server}'s certificate, skipping ... \n{err}")
                     skipped_servers.append(first_server)
+                    status = 2
                     continue
                 elif err:
                     LOGGER.warning(f"Error while checking {first_server}'s certificate : {err}")
                     skipped_servers.append(first_server)
+                    status = 2
                     continue
                 elif need_reload:
                     LOGGER.info(f"Detected change in {first_server}'s certificate")
@@ -137,8 +168,8 @@ try:
         JOB.del_cache("key.pem", service_id=first_server)
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running custom-cert.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running custom-cert.py :\n{e}")
 
 sys_exit(status)

@@ -7,7 +7,7 @@ local misc = class("misc", plugin)
 local ngx = ngx
 local HTTP_NOT_ALLOWED = ngx.HTTP_NOT_ALLOWED
 local HTTP_BAD_REQUEST = ngx.HTTP_BAD_REQUEST
-local HTTP_MOVED_PERMANENTLY = ngx.HTTP_MOVED_PERMANENTLY
+local get_security_mode = utils.get_security_mode
 local regex_match = utils.regex_match
 
 function misc:initialize(ctx)
@@ -16,21 +16,6 @@ function misc:initialize(ctx)
 end
 
 function misc:access()
-	-- Check if we need to redirect to HTTPS
-	if
-		self.ctx.bw.scheme == "http"
-		and (
-			(self.ctx.bw.https_configured == "yes" and self.variables["AUTO_REDIRECT_HTTP_TO_HTTPS"] == "yes")
-			or self.variables["REDIRECT_HTTP_TO_HTTPS"] == "yes"
-		)
-	then
-		return self:ret(
-			true,
-			"redirect to HTTPS",
-			HTTP_MOVED_PERMANENTLY,
-			"https://" .. self.ctx.bw.http_host .. self.ctx.bw.request_uri
-		)
-	end
 	-- Check if method is valid
 	local method = self.ctx.bw.request_method
 	if not method or not regex_match(method, "^[A-Z]+$") then
@@ -43,7 +28,11 @@ function misc:access()
 		end
 	end
 	self:set_metric("counters", "failed_method", 1)
-	return self:ret(true, "method " .. method .. " is not allowed", HTTP_NOT_ALLOWED)
+	local security_mode = get_security_mode(self.ctx)
+	if security_mode == "block" then
+		return self:ret(true, "method " .. method .. " is not allowed", HTTP_NOT_ALLOWED)
+	end
+	return self:ret(true, "detected method " .. method .. " not allowed")
 end
 
 function misc:header()

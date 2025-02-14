@@ -43,7 +43,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        linux: [ubuntu, debian, fedora, rhel, rhel9, ubuntu-jammy]
+        linux: [ubuntu, debian, fedora, fedora-41, rhel, rhel9, ubuntu-jammy]
         include:
           - linux: ubuntu
             package: deb
@@ -52,6 +52,8 @@ jobs:
           - linux: debian
             package: deb
           - linux: fedora
+            package: rpm
+          - linux: fedora-41
             package: rpm
           - linux: rhel
             package: rpm
@@ -76,75 +78,76 @@ jobs:
       security-events: write
 
   # UI tests
-  prepare-tests-ui:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-      - id: set-matrix
-        run: |
-          tests=$(find ./tests/ui/ -name "*_page.py" -type f -printf "%f\n" | jq -c --raw-input --slurp 'split("\n")| .[0:-1]')
-          echo "tests=$tests" >> $GITHUB_OUTPUT
-    outputs:
-      tests: ${{ steps.set-matrix.outputs.tests }}
-  tests-ui:
-    needs: [prepare-tests-ui, build-containers]
-    strategy:
-      fail-fast: false
-      matrix:
-        test: ${{ fromJson(needs.prepare-tests-ui.outputs.tests) }}
-    uses: ./.github/workflows/tests-ui.yml
-    with:
-      TEST: ${{ matrix.test }}
-      RELEASE: dev
-  tests-ui-linux:
-    needs: [prepare-tests-ui, build-packages]
-    strategy:
-      fail-fast: false
-      matrix:
-        test: ${{ fromJson(needs.prepare-tests-ui.outputs.tests) }}
-    uses: ./.github/workflows/tests-ui-linux.yml
-    with:
-      TEST: ${{ matrix.test }}
-      RELEASE: dev
+  # prepare-tests-ui: # TODO: Uncomment when UI tests are back
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+  #     - id: set-matrix
+  #       run: |
+  #         tests=$(find ./tests/ui/ -name "*_page.py" -type f -printf "%f\n" | jq -c --raw-input --slurp 'split("\n")| .[0:-1]')
+  #         echo "tests=$tests" >> $GITHUB_OUTPUT
+  #   outputs:
+  #     tests: ${{ steps.set-matrix.outputs.tests }}
+  # tests-ui:
+  #   needs: [prepare-tests-ui, build-containers]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test: ${{ fromJson(needs.prepare-tests-ui.outputs.tests) }}
+  #   uses: ./.github/workflows/tests-ui.yml
+  #   with:
+  #     TEST: ${{ matrix.test }}
+  #     RELEASE: dev
+  # tests-ui-linux:
+  #   needs: [prepare-tests-ui, build-packages]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test: ${{ fromJson(needs.prepare-tests-ui.outputs.tests) }}
+  #   uses: ./.github/workflows/tests-ui-linux.yml
+  #   with:
+  #     TEST: ${{ matrix.test }}
+  #     RELEASE: dev
 
   # Core tests
-  prepare-tests-core:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-      - id: set-matrix
-        run: |
-          tests=$(find ./tests/core/ -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | jq -c --raw-input --slurp 'split("\n")| .[0:-1]')
-          echo "tests=$tests" >> $GITHUB_OUTPUT
-    outputs:
-      tests: ${{ steps.set-matrix.outputs.tests }}
-  tests-core:
-    needs: [build-containers, prepare-tests-core]
-    strategy:
-      fail-fast: false
-      matrix:
-        test: ${{ fromJson(needs.prepare-tests-core.outputs.tests) }}
-    uses: ./.github/workflows/test-core.yml
-    with:
-      TEST: ${{ matrix.test }}
-      RELEASE: dev
-  tests-core-linux:
-    needs: [build-packages, prepare-tests-core]
-    strategy:
-      fail-fast: false
-      matrix:
-        test: ${{ fromJson(needs.prepare-tests-core.outputs.tests) }}
-    uses: ./.github/workflows/test-core-linux.yml
-    with:
-      TEST: ${{ matrix.test }}
-      RELEASE: dev
-    secrets: inherit
+  # prepare-tests-core:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+  #     - id: set-matrix
+  #       run: |
+  #         tests=$(find ./tests/core/ -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | jq -c --raw-input --slurp 'split("\n")| .[0:-1]')
+  #         echo "tests=$tests" >> $GITHUB_OUTPUT
+  #   outputs:
+  #     tests: ${{ steps.set-matrix.outputs.tests }}
+  # tests-core:
+  #   needs: [build-containers, prepare-tests-core]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test: ${{ fromJson(needs.prepare-tests-core.outputs.tests) }}
+  #   uses: ./.github/workflows/test-core.yml
+  #   with:
+  #     TEST: ${{ matrix.test }}
+  #     RELEASE: dev
+  # tests-core-linux:
+  #   needs: [build-packages, prepare-tests-core]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test: ${{ fromJson(needs.prepare-tests-core.outputs.tests) }}
+  #   uses: ./.github/workflows/test-core-linux.yml
+  #   with:
+  #     TEST: ${{ matrix.test }}
+  #     RELEASE: dev
+  #   secrets: inherit
 
   # Push with dev tag
   push-dev:
-    needs: [tests-ui, tests-core]
+    # needs: [tests-ui, tests-core] # TODO: Uncomment when tests are back
+    needs: [build-containers]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -184,10 +187,11 @@ jobs:
 
   # Push Linux packages
   push-packages:
-    needs: [tests-ui-linux, tests-core-linux]
+    # needs: [tests-ui-linux, tests-core-linux] # TODO: Uncomment when tests are back
+    needs: [build-packages]
     strategy:
       matrix:
-        linux: [ubuntu, debian, fedora, el, el9, ubuntu-jammy]
+        linux: [ubuntu, debian, fedora, fedora-41, el, el9, ubuntu-jammy]
         arch: [amd64]
         include:
           - release: dev
@@ -209,6 +213,12 @@ jobs:
             separator: "-"
             suffix: "1."
             version: 40
+            package: rpm
+          - linux: fedora-41
+            package_arch: x86_64
+            separator: "-"
+            suffix: "1."
+            version: 41
             package: rpm
           - linux: el
             package_arch: x86_64

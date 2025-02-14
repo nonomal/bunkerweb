@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checkout
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       # Get PDF doc
       - name: Get documentation
         if: inputs.VERSION != 'testing'
@@ -38,20 +38,19 @@ jobs:
           tag: "${{ inputs.VERSION }}"
           message: "${{ inputs.VERSION }}"
           force_push_tag: true
-      # Extract changelog
+      # Extract and preserve changelog formatting
       - name: Extract changelog
         if: inputs.VERSION != 'testing'
-        id: getchangelog
         run: |
+          # Extract the changelog content
           content=$(awk -v n=2 '/##/{n--}; n > 0' CHANGELOG.md | grep -v '# Changelog' | grep -v '##' | sed '/^$/d')
-          content="${content//'%'/'%25'}"
-          content="${content//$'\n'/'%0A'}"
-          content="${content//$'\r'/'%0D'}"
-          echo "content=$content" >> $GITHUB_OUTPUT
+          echo "DECODED_CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "$content" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
       # Create release
       - name: Create release
         if: inputs.VERSION != 'testing'
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           body: |
             Documentation : https://docs.bunkerweb.io/${{ inputs.VERSION }}/
@@ -65,7 +64,7 @@ jobs:
             Linux packages : https://packagecloud.io/app/bunkerity/bunkerweb/search?q=${{ inputs.VERSION }}&filter=all&dist=
 
             Changelog :
-            ${{ steps.getchangelog.outputs.content }}
+            ${{ env.DECODED_CHANGELOG }}
           draft: true
           prerelease: ${{ inputs.PRERELEASE }}
           name: v${{ inputs.VERSION }}
@@ -75,7 +74,7 @@ jobs:
       # Create release
       - name: Create release
         if: inputs.VERSION == 'testing'
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           body: |
             **The testing version of BunkerWeb should not be used in production, please use the latest stable version instead.**

@@ -1,19 +1,41 @@
-from datetime import datetime
 from json import loads
+from logging import getLogger
 from traceback import format_exc
 
 
-def pre_render(app, *args, **kwargs):
+def pre_render(**kwargs):
+    logger = getLogger("UI")
+    ret = {
+        "date_last_backup": {
+            "value": "N/A",
+            "title": "Last Backup",
+            "subtitle_color": "primary",
+            "svg_color": "primary",
+        },
+        "list_backup_files": {
+            "data": {},
+            "svg_color": "primary",
+        },
+    }
     try:
-        data = loads(app.config["DB"].get_job_cache_file("backup-data", "backup.json") or "{}")
+        backup_file = kwargs["db"].get_job_cache_file("backup-data", "backup.json")
+        logger.debug(f"backup_file: {backup_file}")
 
-        if data.get("date", None):
-            data["date"] = datetime.fromisoformat(data["date"]).strftime("%Y-%m-%d %H:%M:%S")
+        data = loads(backup_file or "{}")
 
-        return data
-    except BaseException:
-        print(format_exc(), flush=True)
-        return {"date": None, "files": [], "error": format_exc()}
+        for backup_file in data.get("files", []):
+            if "file name" not in ret["list_backup_files"]["data"]:
+                ret["list_backup_files"]["data"]["file name"] = []
+            ret["list_backup_files"]["data"]["file name"].append(backup_file)
+
+        if data.get("date"):
+            ret["date_last_backup"]["value"] = data["date"]
+    except BaseException as e:
+        logger.debug(format_exc())
+        logger.error(f"Failed to get backup metrics: {e}")
+        ret["error"] = str(e)
+
+    return ret
 
 
 def backup(**kwargs):

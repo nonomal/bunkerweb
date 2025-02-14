@@ -4,8 +4,6 @@ from os import getenv, sep
 from os.path import join
 from pathlib import Path
 from sys import exit as sys_exit, path as sys_path
-from threading import Lock
-from traceback import format_exc
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("api",), ("db",))]:
     if deps_path not in sys_path:
@@ -16,7 +14,7 @@ from common_utils import get_integration  # type: ignore
 from logger import setup_logger  # type: ignore
 from API import API  # type: ignore
 
-LOGGER = setup_logger("Lets-encrypt.auth", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("Lets-encrypt.auth")
 status = 0
 
 try:
@@ -30,10 +28,8 @@ try:
     # Cluster case
     if integration in ("Docker", "Swarm", "Kubernetes", "Autoconf"):
         db = Database(LOGGER, sqlalchemy_string=getenv("DATABASE_URI", None))
-        lock = Lock()
 
-        with lock:
-            instances = db.get_instances()
+        instances = db.get_instances()
 
         LOGGER.info(f"Sending challenge to {len(instances)} instances")
         for instance in instances:
@@ -53,8 +49,8 @@ try:
         root_dir = Path(sep, "var", "tmp", "bunkerweb", "lets-encrypt", ".well-known", "acme-challenge")
         root_dir.mkdir(parents=True, exist_ok=True)
         root_dir.joinpath(token).write_text(validation, encoding="utf-8")
-except:
+except BaseException as e:
     status = 1
-    LOGGER.error(f"Exception while running certbot-auth.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running certbot-auth.py :\n{e}")
 
 sys_exit(status)

@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime, timedelta
+from inspect import currentframe, getframeinfo
 from io import BytesIO
 from logging import Logger
 from os import getenv
 from os.path import sep
 from pathlib import Path
 from shutil import rmtree
-from sys import argv
 from tarfile import TarFile, open as tar_open
 from threading import Lock
 from traceback import format_exc
@@ -26,20 +26,35 @@ EXPIRE_TIME = {
 
 
 class Job:
-    def __init__(self, logger: Optional[Logger] = None, db=None, *, job_name: str = "", deprecated: bool = False):
-        if not argv:
-            raise ValueError("argv could not be determined.")
+    def __init__(self, logger: Logger, job_path: str, db=None, *, deprecated: bool = False):
+        """Initialize Job class."""
+        if job_path:
+            job_path = Path(job_path)
+            plugin_id = job_path.parent.parent.name
+            job_name = job_path.stem
+        else:
+            frame = currentframe()
+            if not frame:
+                raise ValueError("frame could not be determined.")
 
-        source_file = argv[0]
+            source_path = Path(getframeinfo(frame.f_back).filename)
 
-        if source_file is None:
-            raise ValueError("source_file could not be determined.")
-        elif not logger and not db:
-            raise ValueError("Either logger or db must be provided.")
+            if not source_path.exists():
+                raise ValueError("source_file could not be determined.")
 
-        source_path = Path(source_file)
-        self.job_path = Path(sep, "var", "cache", "bunkerweb", source_path.parent.parent.name)
-        self.job_name = job_name or source_path.name.replace(".py", "")
+            plugin_id = source_path.parent.parent.name
+            job_name = job_name or source_path.name.replace(".py", "")
+
+        if not job_name:
+            raise ValueError("Could not determine job name.")
+
+        # Set job_path and job_name
+        self.job_path = Path(sep, "var", "cache", "bunkerweb", plugin_id)
+        self.job_name = job_name
+
+        # Additional validation for job_path
+        if self.job_path == Path(sep, "var", "cache", "bunkerweb"):
+            raise ValueError("Could not determine job path. Ensure passed_plugin_id is valid.")
 
         self.db = db
         if not self.db:
@@ -49,16 +64,14 @@ class Job:
         self.logger = logger or self.db.logger
 
         if not deprecated:
-            with LOCK:
-                is_scheduler_first_start = self.db.is_scheduler_first_start()
-            if not is_scheduler_first_start:
+            db_metadata = self.db.get_metadata()
+            if not isinstance(db_metadata, str) and not db_metadata["scheduler_first_start"]:
                 self.restore_cache(manual=False)
 
     def restore_cache(self, *, job_name: str = "", plugin_id: str = "", manual: bool = True) -> bool:
         """Restore job cache files from database."""
         ret = True
-        with LOCK:
-            job_cache_files = self.db.get_jobs_cache_files(plugin_id=plugin_id or self.job_path.name)  # type: ignore
+        job_cache_files = self.db.get_jobs_cache_files(plugin_id=plugin_id or self.job_path.name)  # type: ignore
 
         job_name = job_name or self.job_name
         plugin_cache_files = set()
@@ -73,8 +86,8 @@ class Job:
                     extract_path = cache_path.parent
                     if job_cache_file["file_name"].startswith("folder:"):
                         extract_path = Path(job_cache_file["file_name"].split("folder:", 1)[1].rsplit(".tgz", 1)[0])
-                    ignored_dirs.add(extract_path.as_posix())
                     if job_cache_file["job_name"] != job_name:
+                        ignored_dirs.add(extract_path.as_posix())
                         continue
                     with LOCK:
                         rmtree(extract_path, ignore_errors=True)
@@ -87,17 +100,26 @@ class Job:
                                         tar.extract(member, path=extract_path)
                                     except Exception as e:
                                         self.logger.error(f"Error extracting {member.name}: {e}")
+                                ignored_dirs.add(extract_path.as_posix())
+                                self.logger.debug(f"Restored cache directory {extract_path}")
                             except Exception as e:
                                 self.logger.error(f"Error extracting tar file: {e}")
-                    self.logger.debug(f"Restored cache directory {extract_path}")
                     continue
                 elif job_cache_file["job_name"] != job_name:
                     continue
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 cache_path.write_bytes(job_cache_file["data"])
-                self.logger.debug(f"Restored cache file {job_cache_file['file_name']}")
+                ignored_dirs.add(cache_path.parent.as_posix())
+                self.logger.debug(
+                    "Restored cache file " + ((job_cache_file["service_id"] + "/") if job_cache_file["service_id"] else "") + job_cache_file["file_name"]
+                )
             except BaseException as e:
-                self.logger.error(f"Exception while restoring cache file {job_cache_file['file_name']} :\n{e}")
+                self.logger.error(
+                    "Exception while restoring cache file "
+                    + ((job_cache_file["service_id"] + "/") if job_cache_file["service_id"] else "")
+                    + job_cache_file["file_name"]
+                    + f" :\n{e}"
+                )
                 ret = False
 
         with LOCK:
@@ -110,13 +132,13 @@ class Job:
                     if file not in plugin_cache_files and file.is_file():
                         self.logger.debug(f"Removing non-cached file {file}")
                         file.unlink(missing_ok=True)
-                        if file.parent.is_dir() and not list(file.parent.iterdir()):
-                            self.logger.debug(f"Removing empty directory {file.parent}")
+                        if file.parent.is_dir():
+                            self.logger.debug(f"Removing directory {file.parent}")
                             rmtree(file.parent, ignore_errors=True)
                             if file.parent == self.job_path:
                                 break
-                    elif file.is_dir() and not list(file.iterdir()):
-                        self.logger.debug(f"Removing empty directory {file}")
+                    elif file.is_dir():
+                        self.logger.debug(f"Removing directory {file}")
                         rmtree(file, ignore_errors=True)
 
         return ret
@@ -133,10 +155,9 @@ class Job:
             if with_data:
                 ret_data["data"] = cache_path.read_bytes()
 
-        with LOCK:
-            if not ret_data:
-                return self.db.get_job_cache_file(job_name or self.job_name, name, service_id=service_id, plugin_id=plugin_id or self.job_path.name, with_info=with_info, with_data=with_data)  # type: ignore
-            ret_data.update(self.db.get_job_cache_file(job_name or self.job_name, name, service_id=service_id, plugin_id=plugin_id or self.job_path.name, with_info=True, with_data=False) or {})  # type: ignore
+        if not ret_data:
+            return self.db.get_job_cache_file(job_name or self.job_name, name, service_id=service_id, plugin_id=plugin_id or self.job_path.name, with_info=with_info, with_data=with_data)  # type: ignore
+        ret_data.update(self.db.get_job_cache_file(job_name or self.job_name, name, service_id=service_id, plugin_id=plugin_id or self.job_path.name, with_info=True, with_data=False) or {})  # type: ignore
         return ret_data
 
     def is_cached_file(
@@ -147,7 +168,7 @@ class Job:
         try:
             cache_info = self.get_cache(name, job_name=job_name, service_id=service_id, plugin_id=plugin_id, with_info=True, with_data=False)
             if isinstance(cache_info, dict):
-                current_time = datetime.now().timestamp()
+                current_time = datetime.now().astimezone().timestamp()
                 if current_time < cache_info["last_update"]:
                     return False
                 is_cached = current_time - cache_info["last_update"] < EXPIRE_TIME[expire]
@@ -186,10 +207,9 @@ class Job:
             checksum = bytes_hash(content)
 
         try:
-            with LOCK:
-                err = self.db.upsert_job_cache(service_id, name, content, job_name=job_name or self.job_name, checksum=checksum)  # type: ignore
-                if err:
-                    ret = False
+            err = self.db.upsert_job_cache(service_id, name, content, job_name=job_name or self.job_name, checksum=checksum)  # type: ignore
+            if err:
+                ret = False
 
             if ret and isinstance(file_cache, Path) and delete_file and file_cache != cache_path:
                 file_cache.unlink(missing_ok=True)
@@ -225,8 +245,7 @@ class Job:
             rmtree(job_path, ignore_errors=True)
 
         try:
-            with LOCK:
-                self.db.delete_job_cache(name, job_name=job_name, service_id=service_id)  # type: ignore
+            self.db.delete_job_cache(name, job_name=job_name, service_id=service_id)  # type: ignore
         except:
             return False, f"exception :\n{format_exc()}"
         return ret, err

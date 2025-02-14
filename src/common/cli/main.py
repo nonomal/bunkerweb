@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from argparse import ArgumentParser
+from argparse import ArgumentError, ArgumentParser
+from contextlib import suppress
 from os import _exit, getenv, sep
 from os.path import join
 from sys import exit as sys_exit, path as sys_path
@@ -50,6 +51,9 @@ if __name__ == "__main__":
         # Bans subparser
         parser_bans = subparsers.add_parser("bans", help="list current bans")
 
+        # Plugin list subparser
+        parser_plugin_list = subparsers.add_parser("plugin_list", help="list all available plugins and their commands")
+
         # Plugin subparser
         parser_plugin = subparsers.add_parser("plugin", help="execute a custom command from a plugin")
         parser_plugin.add_argument("plugin_id", help="the plugin id that you want to execute the command on")
@@ -71,8 +75,16 @@ if __name__ == "__main__":
             ret, err = cli.ban(args.ip, args.exp, args.reason)
         elif args.command == "bans":
             ret, err = cli.bans()
+        elif args.command == "plugin_list":
+            ret, err = cli.plugin_list()
         else:
-            ret, err = cli.custom(args.plugin_id, args.command, *args.arg, debug=args.debug)
+            with suppress(ArgumentError):
+                plugin_args = parser_plugin.parse_args()
+
+                if args.debug:
+                    logger.setLevel("DEBUG")
+
+                ret, err = cli.custom(args.plugin_id, args.command, *args.arg, debug=args.debug)
 
         if not ret:
             logger.error(f"CLI command status : ❌ (fail)\n{err}")

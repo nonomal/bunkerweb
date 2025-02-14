@@ -1,6 +1,125 @@
 # Changelog
 
-## v1.5.10 - ????/??/??
+## v1.6.0 - 2025/02/13
+
+- [BUGFIX] Fix CRS plugins not being included correctly in ModSecurity configuration
+- [FEATURE] Add mCaptcha antibot mode
+- [FEATURE] Add `USE_MODSECURITY_GLOBAL_CRS` setting to ModSecurity plugin to allow using the global CRS instead of the service CRS, which is useful to accelerate the configuration generation when you have a lot of services
+- [AUTOCONF] Increase retry limit and improve stability of Kubernetes watch stream
+- [UI] Add caching for GitHub buttons to improve performance
+- [UI] Fix shenanigans with multiples
+- [DEPS] Updated NGINX version to 1.26.3
+- [DEPS] Updated lua-resty-openssl version to 1.5.2
+
+## v1.6.0-rc4 - 2025/01/29
+
+- [BUGFIX] Fix shenanigans with the configuration being wiped after a restart
+- [BUGFIX] Fix shenanigans with cache files being deleted for no reason
+- [BUGFIX] Refactor condition checks in Database class to avoid default value check when a multiple has a suffix so that it still saves important values
+- [DOCKER] Update Dockerfiles to change user home directories and set shell to nologin for autoconf, scheduler, and ui users
+- [DEPS] Updated coreruleset-v4 version to v4.11.0
+
+## v1.6.0-rc3 - 2025/01/26
+
+- [FEATURE] Update BunkerNet's logic to send reports in bulk instead of one by one
+- [AUTOCONF] Add the possibility to add/override settings via ConfigMap in Kubernetes using the `bunkerweb.io/CONFIG_TYPE=settings` annotation
+- [UI] Add support page for easy logs and configuration sharing while anonymizing sensitive data
+- [LINUX] Support Fedora 41
+
+## v1.6.0-rc2 - 2025/01/21
+
+- [BUGFIX] Whitelisting a client no longer bypasses https redirect settings as the `ssl` plugin is now executed before the `whitelist` plugin
+- [UI] Fixed condition when validating the setup wizard form when a custom certificate is used
+- [FEATURE] Add extra validation of certificates in `customcert` plugin
+- [FEATURE] Introduce new `SSL` plugin to manage SSL/TLS settings without tweaking the `misc` plugin
+- [FEATURE] Add `stream` support in `Kubernetes` integration
+- [FEATURE] Renamed the `MODSECURITY_CRS_PLUGIN_URLS` setting to `MODSECURITY_CRS_PLUGINS` to make it more consistent as the setting now accepts plugin names directly as well as URLs and automatically downloads them
+[FEATURE] Add `plugin_list` command to `bwcli` for listing available plugins and their commands
+- [DOCS] Added Swarm deprecated notice in the documentation
+- [DEPS] Added Brotli v1.1.0 dependency for ngx_brotli
+- [DEPS] Updated headers-more-nginx-module version to v0.37
+- [DEPS] Updated libinjection to latest commit on main branch
+- [DEPS] Updated libmaxminddb version to v1.12.2
+- [DEPS] Updated luajit2 version to v2.1-20250117
+- [DEPS] Updated lua-nginx-module version to v0.10.28
+- [DEPS] Updated lua-resty-core version to v0.1.31
+- [DEPS] Updated lua-resty-dns version to v0.23
+- [DEPS] Updated lua-resty-redis version to v0.31
+- [DEPS] Updated ngx_brotli to latest commit on master branch
+- [DEPS] Updated stream-lua-nginx-module version to v0.0.16
+
+## v1.6.0-rc1 - 2025/01/10
+
+- [BUGFIX] Increase string length for service_id and id columns in database models to avoid issues with long service names
+- [BUGFIX] Fix shenanigans with setup wizard when a reverse proxy was already configured
+- [LINUX] Support Fedora 40 back and temporarily put aside Fedora 41 (there are issues when building the images)
+- [UI] Add `CHECK_PRIVATE_IP` configuration to manage session IP address changes for private networks
+- [UI] Implement `ALWAYS_REMEMBER` functionality for session persistence in login
+- [UI] Add temporary UI service to show errors that occurred if any while web UI was starting up
+- [FEATURE] Update regex for cookie flags validation to allow additional attributes
+- [FEATURE] Add health check endpoint and integrate it into the scheduler for instance status monitoring
+- [FEATURE] Add country tracking to bans data
+- [FEATURE] Refactored the way the database migrations are handled to make it more reliable and faster using alembic
+- [FEATURE] Add configurable limit for SecRequestBodyNoFilesLimit in ModSecurity via the `MODSECURITY_REQ_BODY_NO_FILES_LIMIT` setting
+- [FEATURE] Add multi-user support in `Auth basic` plugin
+- [FEATURE] Add support for TCP toggle listening in server-stream configuration (now UDP doesn't replace TCP when activated)
+- [FEATURE] Made `LISTEN_STREAM_PORT` and `LISTEN_STREAM_PORT_SSL` settings multiples to allow listening on multiple ports
+- [DEPRECATION] Remove `X-XSS-Protection` header from the `header` plugin as it is deprecated
+- [DEPS] Updated coreruleset-v4 version to v4.10.0
+- [DEPS] Updated libmaxminddb version to v1.12.1
+
+## v1.6.0-beta - 2024/12/10
+
+- [FEATURE] Add support for the Coreruleset plugins via the USE_MODSECURITY_CRS_PLUGINS and the MODSECURITY_CRS_PLUGIN_URLS settings (it automatically downloads and installs the plugins like with BunkerWeb's external plugins). plugins can also be added manually via custom configuration files
+- [FEATURE] Add X_DNS_PREFETCH_CONTROL setting to control the DNS prefetching behavior via the X-DNS-Prefetch-Control header (default is off)
+- [FEATURE] Add new `securitytxt` plugin to manage the security.txt file from settings and serve it
+- [FEATURE] Add new `REVERSE_PROXY_PASS_REQUEST_BODY` setting to control if the request body should be passed to the upstream server (default is yes)
+- [FEATURE] Jobs now have an history which the size can be controlled via the `DATABASE_MAX_JOBS_RUNS` setting (default is 10000) and it will be possible to see it in the web UI in a future release
+- [FEATURE] Add support for HTTP/3 connections limiting via the `HTTP3_CONNECTIONS_LIMIT` setting (default is 100) in the `limit` plugin
+- [FEATURE] Add new templating feature to allow to quickly override the default values of settings and custom configurations. You can also precise steps to follow in the UI to help the user configure services.
+- [FEATURE] Optimized the way the scheduler sends the configuration to the instances to make it faster and more reliable using a ThreadPoolExecutor
+- [FEATURE] Add the possibility to set a custom timezone for every service via the `TZ` environment variable (will apply to the logs and all date fields stored in the database). If not set, it will use the local timezone of the server.
+- [FEATURE] Add the possibility to run plugins job in async mode to avoid running them in order in the scheduler by setting the `async` key to `true` in the plugin job configuration (default is `false`)
+- [FEATURE] Add Let's Encrypt DNS challenges support !
+- [FEATURE] Add new `REMOTE_PHP_PORT` setting to control the port used by the remote PHP feature (default is 9000)
+- [SCHEDULER] Refactor the scheduler to use the `BUNKERWEB_INSTANCES` (previously known as `OVERRIDE_INSTANCES`) environment variable instead of an integration specific system
+- [AUTOCONF] Add new `NAMESPACES` environment variable to allow setting the namespaces to watch for the autoconf feature which makes it possible to use multiple autoconf instances in the same cluster while keeping the configuration separated
+- [AUTOCONF] Add new `USE_KUBERNETES_FQDN` environment variable to allow using the full qualified domain name of the services in Kubernetes instead of the ip address for the hostname of instances (default is yes)
+- [LINUX] Support Fedora 41 and drop support of Fedora 40
+- [UI] Start refactoring the UI to make it more modular and easier to maintain
+- [UI] Add a `remember me` feature to the login page so that the user can stay logged in for a longer period of time (expires after 31 days)
+- [UI] Add new `TOTP_SECRETS` setting to encrypt the TOTP secrets in the database (if not set, we generate a random amount of secrets via passlib.totp) - ⚠ We highly recommend setting this setting to a custom value to prevent the secrets from being erased when the volumes are deleted
+- [UI] Start adding roles and permissions to the UI to allow different users to have different permissions in a multi-user environment for the near future
+- [UI] Made 2FA feature more user-friendly and added recovery codes in case of lost access to the 2FA device
+- [UI] Refactored the way we handle logs in the UI to make it so that it no longer relies on Integration specific logics and instead always reads the files present in the `/var/log/bunkerweb` folder
+- [DOCS] Updated docs for all new features and changes
+- [MISC] Review security headers in the `headers` plugin to improve security
+- [MISC] Updated context of `realip`'s `USE_PROXY_PROTOCOL` setting to `global` as it was always applied globally even if set only on a service
+- [DEPS] Updated lua-resty-core version to v0.1.30
+- [DEPS] Updated lua-resty-lrucache version to v0.15
+- [DEPS] Updated LuaJIT version to v2.1-20241113
+- [DEPS] Updated Mbed TLS version to v3.6.2
+- [DEPS] Updated coreruleset-v4 version to v4.9.0
+
+## v1.5.12 - 2024/11/27
+
+- [SECURITY] Fix CVE-2024-53254
+- [UI] Fix issues in several pages because of a wrong key being used to fetch the data
+
+## v1.5.11 - 2024/11/08
+
+- [BUGFIX] Fix INTERCEPTED_ERROR_CODES to allow empty value
+- [UI] Fix missing settings when a service is published online
+- [UI] Fix instances always down in instances page
+- [AUTOCONF] Fix BW env vars not retrieved
+- [AUTOCONF] Fix deadlock on k8s events when there is no ingress
+- [LINUX] Increase default worker dict size to avoid crash on RPI
+- [MISC] Add WORKERLOCK_MEMORY_SIZE setting for worker dict size
+- [MISC] Add API_TIMEOUT and API_READ_TIMEOUT settings to control API timeouts
+- [DEPS] Updated coreruleset-v4 version to v4.8.0
+- [DEPS] Updated coreruleset-v3 version to v3.3.7
+
+## v1.5.10 - 2024/08/17
 
 - [UI] Fix setup wizard bug related to certificate
 - [UI] Fix bug when adding more than 3 reverse proxies URLs

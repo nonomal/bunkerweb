@@ -3,12 +3,11 @@
 from datetime import date, datetime, timedelta
 from gzip import decompress
 from io import BytesIO
-from os import getenv, sep
+from os import sep
 from os.path import join
 from pathlib import Path
 from sys import exit as sys_exit, path as sys_path
-from threading import Lock
-from traceback import format_exc
+from time import sleep
 from typing import Optional
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
@@ -17,19 +16,30 @@ for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in ((
 
 from maxminddb import open_database
 from requests import RequestException, Response, get
+from requests.exceptions import ConnectionError
 
 from logger import setup_logger  # type: ignore
 from common_utils import bytes_hash, file_hash  # type: ignore
 from jobs import Job  # type: ignore
 
-LOGGER = setup_logger("JOBS.mmdb-country", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("JOBS.mmdb-country")
 status = 0
-LOCK = Lock()
 
 
 def request_mmdb() -> Optional[Response]:
     try:
-        response = get("https://db-ip.com/db/download/ip-to-country-lite", timeout=5)
+        max_retries = 3
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                response = get("https://db-ip.com/db/download/ip-to-country-lite", timeout=5)
+                break
+            except ConnectionError as e:
+                retry_count += 1
+                if retry_count == max_retries:
+                    raise e
+                LOGGER.warning(f"Connection refused, retrying in 3 seconds... ({retry_count}/{max_retries})")
+                sleep(3)
         response.raise_for_status()
         return response
     except RequestException:
@@ -53,7 +63,7 @@ try:
         else:
             LOGGER.warning("Unable to check if the temporary mmdb file is the latest version, downloading it anyway...")
 
-    JOB = Job(LOGGER)
+    JOB = Job(LOGGER, __file__)
 
     if dl_mmdb:
         job_cache = JOB.get_cache("country.mmdb", with_info=True, with_data=True)
@@ -64,7 +74,7 @@ try:
 
             if response and response.status_code == 200:
                 skip_dl = response.content.find(bytes_hash(job_cache["data"], algorithm="sha1").encode()) != -1
-            elif job_cache["last_update"] < (datetime.now() - timedelta(weeks=1)).timestamp():
+            elif job_cache["last_update"] < (datetime.now().astimezone() - timedelta(weeks=1)).timestamp():
                 LOGGER.warning("Unable to check if the cache file is the latest version from db-ip.com and file is older than 1 week, checking anyway...")
                 skip_dl = False
 
@@ -79,32 +89,42 @@ try:
         LOGGER.info(f"Downloading mmdb file from url {mmdb_url} ...")
         file_content = BytesIO()
         try:
-            with get(mmdb_url, stream=True, timeout=5) as resp:
-                resp.raise_for_status()
-                for chunk in resp.iter_content(chunk_size=4 * 1024):
-                    if chunk:
-                        file_content.write(chunk)
-        except RequestException as e:
-            LOGGER.error(f"Error while downloading mmdb file from {mmdb_url}: {e}")
-            sys_exit(2)
+            max_retries = 3
+            retry_count = 0
+            while retry_count < max_retries:
+                try:
+                    with get(mmdb_url, stream=True, timeout=5) as resp:
+                        resp.raise_for_status()
+                        for chunk in resp.iter_content(chunk_size=4 * 1024):
+                            if chunk:
+                                file_content.write(chunk)
+                    break
+                except ConnectionError as e:
+                    retry_count += 1
+                    if retry_count == max_retries:
+                        raise e
+                    LOGGER.warning(f"Connection refused, retrying in 3 seconds... ({retry_count}/{max_retries})")
+                    sleep(3)
 
-        try:
             assert file_content
-        except AssertionError:
-            LOGGER.error(f"Error while downloading mmdb file from {mmdb_url}")
-            sys_exit(2)
 
-        # Decompress it
-        LOGGER.info("Decompressing mmdb file ...")
-        file_content.seek(0)
-        tmp_path.write_bytes(decompress(file_content.getvalue()))
+            # Decompress it
+            LOGGER.info("Decompressing mmdb file ...")
+            file_content.seek(0)
+            tmp_path.write_bytes(decompress(file_content.getvalue()))
 
-        if job_cache:
-            # Check if file has changed
-            new_hash = file_hash(tmp_path)
-            if new_hash == job_cache["checksum"]:
-                LOGGER.info("New file is identical to cache file, reload is not needed")
-                sys_exit(0)
+            if job_cache:
+                # Check if file has changed
+                new_hash = file_hash(tmp_path)
+                if new_hash == job_cache["checksum"]:
+                    LOGGER.info("New file is identical to cache file, reload is not needed")
+                    sys_exit(0)
+        except BaseException as e:
+            LOGGER.error(f"Error while downloading mmdb file from {mmdb_url}: {e}")
+            if not tmp_path.is_file():
+                sys_exit(2)
+            LOGGER.warning("Falling back to project cached mmdb file.")
+            dl_mmdb = False
 
     # Try to load it
     LOGGER.info("Checking if mmdb file is valid ...")
@@ -126,8 +146,8 @@ try:
     status = 1
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running mmdb-country.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running mmdb-country.py :\n{e}")
 
 sys_exit(status)

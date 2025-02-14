@@ -4,7 +4,6 @@ from os import getenv, sep
 from os.path import join
 from pathlib import Path
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
     if deps_path not in sys_path:
@@ -15,7 +14,7 @@ from logger import setup_logger  # type: ignore
 from jobs import Job  # type: ignore
 from common_utils import bytes_hash  # type: ignore
 
-LOGGER = setup_logger("BUNKERNET", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("BUNKERNET.data")
 exit_status = 0
 
 try:
@@ -39,12 +38,10 @@ try:
     bunkernet_path = Path(sep, "var", "cache", "bunkerweb", "bunkernet")
     bunkernet_path.mkdir(parents=True, exist_ok=True)
 
-    JOB = Job(LOGGER)
+    JOB = Job(LOGGER, __file__)
 
     # Create empty file in case it doesn't exist
     ip_list_path = bunkernet_path.joinpath("ip.list")
-    if not ip_list_path.is_file():
-        ip_list_path.touch(exist_ok=True)
 
     # Get ID from cache
     bunkernet_id = None
@@ -57,7 +54,7 @@ try:
 
     # Check if ID is present
     if not bunkernet_path.joinpath("instance.id").is_file():
-        LOGGER.error("Not downloading BunkerNet data because instance is not registered")
+        LOGGER.warning("Not downloading BunkerNet data because instance is not registered")
         sys_exit(2)
 
     # Don't go further if the cache is fresh
@@ -77,7 +74,7 @@ try:
         LOGGER.warning("BunkerNet API is rate limiting us, trying again later...")
         sys_exit(0)
     elif status == 403:
-        LOGGER.warning("BunkerNet has banned this instance, retrying a register later...")
+        LOGGER.warning("BunkerNet has banned this instance, retrying to download data later...")
         sys_exit(0)
 
     try:
@@ -114,8 +111,8 @@ try:
     exit_status = 1
 except SystemExit as e:
     exit_status = e.code
-except:
+except BaseException as e:
     exit_status = 2
-    LOGGER.error(f"Exception while running bunkernet-data.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running bunkernet-data.py :\n{e}")
 
 sys_exit(exit_status)

@@ -19,10 +19,9 @@ function headers:initialize(ctx)
 		["CONTENT_SECURITY_POLICY"] = "Content-Security-Policy",
 		["REFERRER_POLICY"] = "Referrer-Policy",
 		["PERMISSIONS_POLICY"] = "Permissions-Policy",
-		["FEATURE_POLICY"] = "Feature-Policy",
 		["X_FRAME_OPTIONS"] = "X-Frame-Options",
 		["X_CONTENT_TYPE_OPTIONS"] = "X-Content-Type-Options",
-		["X_XSS_PROTECTION"] = "X-XSS-Protection",
+		["X_DNS_PREFETCH_CONTROL"] = "X-DNS-Prefetch-Control",
 	}
 	-- Load data from datastore if needed
 	if get_phase() ~= "init" then
@@ -62,7 +61,7 @@ function headers:init()
 			if data[srv] == nil then
 				data[srv] = {}
 			end
-			local m = regex_match(value, "([\\w-]+): ([^,]+)")
+			local m = regex_match(value, "([\\w-]+): (.+)")
 			if m then
 				data[srv][m[1]] = m[2]
 			end

@@ -5,38 +5,34 @@ from os.path import join
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, Popen
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 
-for deps_path in [
-    join(sep, "usr", "share", "bunkerweb", *paths)
-    for paths in (
-        ("deps", "python"),
-        ("utils",),
-        ("db",),
-    )
-]:
+for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
     if deps_path not in sys_path:
         sys_path.append(deps_path)
 
 from logger import setup_logger  # type: ignore
 from jobs import Job  # type: ignore
 
-LOGGER = setup_logger("LETS-ENCRYPT.renew", getenv("LOG_LEVEL", "INFO"))
-LOGGER_CERTBOT = setup_logger("LETS-ENCRYPT.renew.certbot", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("LETS-ENCRYPT.renew")
+LIB_PATH = Path(sep, "var", "lib", "bunkerweb", "letsencrypt")
+CERTBOT_BIN = join(sep, "usr", "share", "bunkerweb", "deps", "python", "bin", "certbot")
+DEPS_PATH = join(sep, "usr", "share", "bunkerweb", "deps", "python")
+
+LOGGER_CERTBOT = setup_logger("LETS-ENCRYPT.renew.certbot")
 status = 0
 
-CERTBOT_BIN = join(sep, "usr", "share", "bunkerweb", "deps", "python", "bin", "certbot")
-
-DATA_PATH = Path(sep, "var", "cache", "bunkerweb", "letsencrypt", "etc")
-LETS_ENCRYPT_WORK_DIR = join(sep, "var", "lib", "bunkerweb", "letsencrypt")
-LETS_ENCRYPT_LOGS_DIR = join(sep, "var", "log", "bunkerweb")
+CACHE_PATH = Path(sep, "var", "cache", "bunkerweb", "letsencrypt")
+DATA_PATH = CACHE_PATH.joinpath("etc")
+WORK_DIR = join(sep, "var", "lib", "bunkerweb", "letsencrypt")
+LOGS_DIR = join(sep, "var", "log", "bunkerweb", "letsencrypt")
 
 try:
     # Check if we're using let's encrypt
     use_letsencrypt = False
-    if getenv("AUTO_LETS_ENCRYPT", "no") == "yes":
-        use_letsencrypt = True
-    elif getenv("MULTISITE", "no") == "yes":
+
+    if getenv("MULTISITE", "no") == "no":
+        use_letsencrypt = getenv("AUTO_LETS_ENCRYPT", "no") == "yes"
+    else:
         for first_server in getenv("SERVER_NAME", "").split(" "):
             if first_server and getenv(f"{first_server}_AUTO_LETS_ENCRYPT", "no") == "yes":
                 use_letsencrypt = True
@@ -46,7 +42,10 @@ try:
         LOGGER.info("Let's Encrypt is not activated, skipping renew...")
         sys_exit(0)
 
-    JOB = Job(LOGGER)
+    JOB = Job(LOGGER, __file__)
+
+    env = environ.copy()
+    env["PYTHONPATH"] = env.get("PYTHONPATH", "") + (f":{DEPS_PATH}" if DEPS_PATH not in env.get("PYTHONPATH", "") else "")
 
     process = Popen(
         [
@@ -56,14 +55,14 @@ try:
             "--config-dir",
             DATA_PATH.as_posix(),
             "--work-dir",
-            LETS_ENCRYPT_WORK_DIR,
+            WORK_DIR,
             "--logs-dir",
-            LETS_ENCRYPT_LOGS_DIR,
+            LOGS_DIR,
         ],
         stdin=DEVNULL,
         stderr=PIPE,
         universal_newlines=True,
-        env=environ | {"PYTHONPATH": join(sep, "usr", "share", "bunkerweb", "deps", "python")},
+        env=env,
     )
     while process.poll() is None:
         if process.stderr:
@@ -83,8 +82,8 @@ try:
             LOGGER.info("Successfully saved Let's Encrypt data to db cache")
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running certbot-renew.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running certbot-renew.py :\n{e}")
 
 sys_exit(status)

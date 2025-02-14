@@ -1,8 +1,6 @@
-version: "3"
-
 services:
   mydrupal:
-    image: drupal:9.4-apache
+    image: drupal:10-apache
     networks:
       - bw-services
     volumes:
@@ -22,9 +20,11 @@ services:
         - bunkerweb.REVERSE_PROXY_HOST=http://mydrupal
         - bunkerweb.LIMIT_REQ_URL_1=/core/install.php
         - bunkerweb.LIMIT_REQ_RATE_1=5r/s
+        # This is a CRS plugin specific to Drupal
+        - bunkerweb.MODSECURITY_CRS_PLUGIN_URLS=https://github.com/coreruleset/drupal-rule-exclusions-plugin/archive/refs/tags/v1.0.0.tar.gz
 
   mydb:
-    image: mariadb:10.10
+    image: mariadb:11
     networks:
       - bw-services
     volumes:

@@ -6,6 +6,7 @@ local ngx = ngx
 local rand = utils.rand
 local subsystem = ngx.config.subsystem
 local tostring = tostring
+local tonumber = tonumber
 
 local template
 local render = nil
@@ -20,6 +21,7 @@ function errors:initialize(ctx)
 	-- Call parent initialize
 	plugin.initialize(self, "errors", ctx)
 	-- Default error texts
+	self.default_solution = "Please try again in a few minutes"
 	self.default_errors = {
 		["301"] = {
 			title = "Moved Permanently",
@@ -32,10 +34,12 @@ function errors:initialize(ctx)
 		["400"] = {
 			title = "Bad Request",
 			text = "The server did not understand the request.",
+			solution = "Please check the request and try again",
 		},
 		["401"] = {
 			title = "Not Authorized",
 			text = "Valid authentication credentials needed for the target resource.",
+			solution = "Please check that you're authenticated and try again",
 		},
 		["403"] = {
 			title = "Forbidden",
@@ -44,14 +48,17 @@ function errors:initialize(ctx)
 		["404"] = {
 			title = "Not Found",
 			text = "The server cannot find the requested page.",
+			solution = "Please check the URL and try again",
 		},
 		["405"] = {
 			title = "Method Not Allowed",
 			text = "The method specified in the request is not allowed.",
+			solution = "Please check the request method and try again",
 		},
 		["413"] = {
 			title = "Request Entity Too Large",
 			text = "The server will not accept the request, because the request entity is too large.",
+			solution = "Please reduce the size of the request and try again",
 		},
 		["429"] = {
 			title = "Too Many Requests",
@@ -86,17 +93,17 @@ function errors:log()
 end
 
 function errors:render_template(code)
-	local nonce_script = rand(16)
-	local nonce_style = rand(16)
+	local nonce_script = rand(32)
+	local nonce_style = rand(32)
 
 	-- Override CSP header
 	--luacheck: ignore 631
-	ngx.header["Content-Security-Policy"] = "default-src 'none'; script-src http: https: 'unsafe-inline' 'strict-dynamic' 'nonce-"
+	ngx.header["Content-Security-Policy"] = "default-src 'none'; script-src 'strict-dynamic' 'nonce-"
 		.. nonce_script
 		.. "'; style-src 'nonce-"
 		.. nonce_style
 		--luacheck: ignore 631
-		.. "'; frame-ancestors 'none'; base-uri 'none'; img-src 'self' data:; font-src 'self' data:; require-trusted-types-for 'script'; block-all-mixed-content; upgrade-insecure-requests;"
+		.. "'; frame-ancestors 'none'; base-uri 'none'; img-src data:; font-src data:; require-trusted-types-for 'script';"
 
 	-- Remove server header
 	ngx.header["Server"] = nil
@@ -112,6 +119,7 @@ function errors:render_template(code)
 
 	if ssl then
 		ngx.header["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+		ngx.header["Content-Security-Policy"] = ngx.header["Content-Security-Policy"] .. " upgrade-insecure-requests;"
 	end
 
 	-- Override X-Content-Type-Options header
@@ -120,12 +128,32 @@ function errors:render_template(code)
 	-- Override Referrer-Policy header
 	ngx.header["Referrer-Policy"] = "no-referrer"
 
+	-- Override Permissions-Policy header
+	ngx.header["Permissions-Policy"] =
+		"accelerometer=(), ambient-light-sensor=(), attribution-reporting=(), autoplay=(), battery=(), bluetooth=(), browsing-topics=(), camera=(), compute-pressure=(), display-capture=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), otp-credentials=(), payment=(), picture-in-picture=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), usb=(), web-share=(), window-management=(), xr-spatial-tracking=(), interest-cohort=()"
+
+	-- Override Content-Type header
+	ngx.header["Content-Type"] = "text/html; charset=utf-8"
+
+	-- Override Cache-Control header
+	ngx.header["Cache-Control"] = "no-cache, no-store, must-revalidate"
+
+	local error_type = "unknown"
+	local error_code = tonumber(code)
+	if error_code >= 500 and error_code <= 599 then
+		error_type = "server"
+	elseif error_code >= 400 and error_code <= 499 then
+		error_type = "client"
+	end
+
 	-- Render template
 	render("error.html", {
-		title = code .. " - " .. self.default_errors[code].title,
+		title = code .. " | " .. self.default_errors[code].title,
 		error_title = self.default_errors[code].title,
 		error_code = code,
 		error_text = self.default_errors[code].text,
+		error_type = error_type,
+		error_solution = self.default_errors[code].solution or self.default_solution,
 		nonce_script = nonce_script,
 		nonce_style = nonce_style,
 	})

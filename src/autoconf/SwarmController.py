@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from contextlib import suppress
 from time import sleep
 from traceback import format_exc
 from threading import Thread, Lock
@@ -8,6 +9,7 @@ from docker import DockerClient
 from base64 import b64decode
 
 from docker.models.services import Service
+from docker.errors import DockerException
 from Controller import Controller
 
 
@@ -19,22 +21,72 @@ class SwarmController(Controller):
         self.__swarm_instances = []
         self.__swarm_services = []
         self.__swarm_configs = []
+        self._logger.warning("Swarm integration is deprecated and will be removed in a future release")
+
+    def _get_controller_swarm_services(self, label_key: str) -> List[Service]:
+        """
+        Fetch Swarm services based on a specific label and filter them by namespace.
+
+        Args:
+            label_key (str): The key of the label to filter services by (e.g., "bunkerweb.INSTANCE").
+
+        Returns:
+            List[Service]: A list of services matching the label and namespace criteria.
+        """
+        try:
+            # Retrieve services with the specific label
+            services: List[Service] = self.__client.services.list(filters={"label": label_key})
+        except DockerException as e:
+            self._logger.error(f"Failed to retrieve services with label '{label_key}': {e}")
+            return []
+
+        if not self._namespaces:
+            return services
+
+        namespace_set = set(self._namespaces)
+        valid_services = []
+
+        for service in services:
+            try:
+                # Safely retrieve and validate labels
+                labels = service.attrs.get("Spec", {}).get("Labels", {})
+                if not isinstance(labels, dict):
+                    self._logger.warning(f"Unexpected label format for service {service.id}: {labels}")
+                    continue
+
+                # Check if the namespace label matches any in the set
+                namespace = labels.get("bunkerweb.NAMESPACE", "")
+                if namespace in namespace_set:
+                    self._logger.debug(f"Service {service.id} matches namespace '{namespace}'.")
+                    valid_services.append(service)
+                else:
+                    self._logger.debug(f"Service {service.id} does not match any namespace.")
+
+            except AttributeError as e:
+                self._logger.warning(f"Service {service.id} missing expected attributes: {e}")
+            except Exception as e:
+                self._logger.error(f"Unexpected error while processing service {service.id}: {e}")
+
+        return valid_services
 
     def _get_controller_instances(self) -> List[Service]:
-        self.__swarm_instances = []
-        return self.__client.services.list(filters={"label": "bunkerweb.INSTANCE"})
+        """
+        Fetch Swarm services labeled as 'bunkerweb.INSTANCE'.
+        """
+        return self._get_controller_swarm_services(label_key="bunkerweb.INSTANCE")
 
     def _get_controller_services(self) -> List[Service]:
-        self.__swarm_services = []
-        return self.__client.services.list(filters={"label": "bunkerweb.SERVER_NAME"})
+        """
+        Fetch Swarm services labeled as 'bunkerweb.SERVER_NAME'.
+        """
+        return self._get_controller_swarm_services(label_key="bunkerweb.SERVER_NAME")
 
     def _to_instances(self, controller_instance) -> List[dict]:
         self.__swarm_instances.append(controller_instance.id)
         instances = []
         instance_env = {}
         for env in controller_instance.attrs["Spec"]["TaskTemplate"]["ContainerSpec"]["Env"]:
-            variable = env.split("=")[0]
-            value = env.replace(f"{variable}=", "", 1)
+            variable, value = env.split("=", 1)
             instance_env[variable] = value
 
         for task in controller_instance.tasks():
@@ -44,6 +96,7 @@ class SwarmController(Controller):
                 {
                     "name": task["ID"],
                     "hostname": f"{controller_instance.name}.{task['NodeID']}.{task['ID']}",
+                    "type": "container",
                     "health": task["Status"]["State"] == "running",
                     "env": instance_env,
                 }
@@ -105,14 +158,19 @@ class SwarmController(Controller):
                 return True
             try:
                 labels = self.__client.services.get(event["Actor"]["ID"]).attrs["Spec"]["Labels"]
-                return "bunkerweb.INSTANCE" in labels or "bunkerweb.SERVER_NAME" in labels
+                return ("bunkerweb.INSTANCE" in labels or "bunkerweb.SERVER_NAME" in labels) and (
+                    not self._namespaces or any(labels.get("bunkerweb.NAMESPACE", "") == namespace for namespace in self._namespaces)
+                )
             except:
                 return False
         if event["Type"] == "config":
             if event["Actor"]["ID"] in self.__swarm_configs:
                 return True
             try:
-                return "bunkerweb.CONFIG_TYPE" in self.__client.configs.get(event["Actor"]["ID"]).attrs["Spec"]["Labels"]
+                labels = self.__client.services.get(event["Actor"]["ID"]).attrs["Spec"]["Labels"]
+                return "bunkerweb.CONFIG_TYPE" in labels and (
+                    not self._namespaces or any(labels.get("bunkerweb.NAMESPACE", "") == namespace for namespace in self._namespaces)
+                )
             except:
                 return False
         return False
@@ -169,13 +227,12 @@ class SwarmController(Controller):
                         self.__internal_lock.release()
                         locked = False
             except:
-                self._logger.error(
-                    f"Exception while reading Swarm event ({event_type}) :\n{format_exc()}",
-                )
+                self._logger.error(f"Exception while reading Swarm event ({event_type}) :\n{format_exc()}")
                 error = True
             finally:
                 if locked:
-                    self.__internal_lock.release()
+                    with suppress(BaseException):
+                        self.__internal_lock.release()
                     locked = False
                 if error is True:
                     self._logger.warning("Got exception, retrying in 10 seconds ...")

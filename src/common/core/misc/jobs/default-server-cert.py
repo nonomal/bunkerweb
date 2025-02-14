@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-from os import getenv, sep
+from os import sep
 from os.path import join
 from pathlib import Path
 from subprocess import DEVNULL, run
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
     if deps_path not in sys_path:
@@ -14,12 +13,12 @@ for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in ((
 from logger import setup_logger  # type: ignore
 from jobs import Job  # type: ignore
 
-LOGGER = setup_logger("DEFAULT-SERVER-CERT", getenv("LOG_LEVEL", "INFO"))
-LOGGER_OPENSSL = setup_logger("DEFAULT-SERVER-CERT.openssl", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("DEFAULT-SERVER-CERT")
+LOGGER_OPENSSL = setup_logger("DEFAULT-SERVER-CERT.openssl")
 status = 0
 
 try:
-    JOB = Job(LOGGER)
+    JOB = Job(LOGGER, __file__)
 
     cert_path = Path(sep, "var", "cache", "bunkerweb", "misc")
     if not JOB.is_cached_file("default-server-cert.pem", "month") or not JOB.is_cached_file("default-server-cert.key", "month"):
@@ -71,8 +70,8 @@ try:
             LOGGER.info("Successfully saved default-server-cert default-server-cert.key file to db cache")
     else:
         LOGGER.info("Skipping generation of self-signed certificate for default server (already present)")
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running default-server-cert.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running default-server-cert.py :\n{e}")
 
 sys_exit(status)

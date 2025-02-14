@@ -23,15 +23,42 @@
       "regex": "^(yes|no)$",
       "type": "check"
     },
+    "USE_MODSECURITY_CRS_PLUGINS": {
+      "context": "multisite",
+      "default": "yes",
+      "help": "Enable OWASP Core Rule Set plugins.",
+      "id": "use-modsecurity-crs-plugins",
+      "label": "Use Core Rule Set Plugins",
+      "regex": "^(yes|no)$",
+      "type": "check"
+    },
     "MODSECURITY_CRS_VERSION": {
       "context": "multisite",
-      "default": "3",
+      "default": "4",
       "help": "Version of the OWASP Core Rule Set to use with ModSecurity (3, 4 or nightly).",
       "id": "modsecurity-crs-version",
       "label": "Core Rule Set Version",
       "regex": "^(3|4|nightly)$",
       "type": "select",
       "select": ["3", "4", "nightly"]
+    },
+    "MODSECURITY_CRS_PLUGINS": {
+      "context": "multisite",
+      "default": "",
+      "help": "List of OWASP CRS plugins (plugin-name[/tag] or URL) to download and install (separated with spaces). (Not compatible with CRS version 3)",
+      "id": "modsecurity-crs-plugins",
+      "label": "Core Rule Set Plugins",
+      "regex": "^.*$",
+      "type": "text"
+    },
+    "USE_MODSECURITY_GLOBAL_CRS": {
+      "context": "global",
+      "default": "no",
+      "help": "Use ModSecurity CRS in global mode to improve rules loading when you have many services.",
+      "id": "use-modsecurity-global-crs",
+      "label": "ModSecurity global CRS mode",
+      "regex": "^(yes|no)$",
+      "type": "check"
     },
     "MODSECURITY_SEC_AUDIT_ENGINE": {
       "context": "multisite",
@@ -61,6 +88,15 @@
       "label": "SecAuditLogParts",
       "regex": "^A(([B-K])(?!.*\\2))+Z$",
       "type": "text"
+    },
+    "MODSECURITY_REQ_BODY_NO_FILES_LIMIT": {
+      "context": "multisite",
+      "default": "131072",
+      "help": "SecRequestBodyNoFilesLimit directive of ModSecurity.",
+      "id": "modsecurity-req-body-no-files-limit",
+      "label": "SecRequestBodyNoFilesLimit",
+      "regex": "^[0-9]+$",
+      "type": "text"
     }
   },
   "jobs": [
@@ -68,7 +104,15 @@
       "name": "coreruleset-nightly",
       "file": "coreruleset-nightly.py",
       "every": "day",
-      "reload": true
+      "reload": true,
+      "async": true
+    },
+    {
+      "name": "download-crs-plugins",
+      "file": "download-crs-plugins.py",
+      "every": "day",
+      "reload": true,
+      "async": true
     }
   ]
 }

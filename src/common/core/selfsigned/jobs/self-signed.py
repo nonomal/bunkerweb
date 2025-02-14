@@ -6,7 +6,6 @@ from os.path import join
 from pathlib import Path
 from subprocess import DEVNULL, run
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 from typing import Tuple
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
@@ -19,8 +18,8 @@ from cryptography.hazmat.backends import default_backend
 from logger import setup_logger  # type: ignore
 from jobs import Job  # type: ignore
 
-LOGGER = setup_logger("self-signed", getenv("LOG_LEVEL", "INFO"))
-JOB = Job(LOGGER)
+LOGGER = setup_logger("self-signed")
+JOB = Job(LOGGER, __file__)
 status = 0
 
 
@@ -42,13 +41,21 @@ def generate_cert(first_server: str, days: str, subj: str, self_signed_path: Pat
             LOGGER.info(f"Self-signed certificate already present for {first_server}")
 
             certificate = x509.load_pem_x509_certificate(JOB.get_cache("cert.pem", service_id=first_server), default_backend())
+
+            try:
+                not_valid_after = certificate.not_valid_after_utc
+                not_valid_before = certificate.not_valid_before_utc
+            except AttributeError:
+                not_valid_after = certificate.not_valid_after
+                not_valid_before = certificate.not_valid_before
+
             if sorted(attribute.rfc4514_string() for attribute in certificate.subject) != sorted(v for v in subj.split("/") if v):
                 LOGGER.warning(f"Subject of self-signed certificate for {first_server} is different from the one in the configuration, regenerating ...")
-            elif certificate.not_valid_after_utc - certificate.not_valid_before_utc != timedelta(days=int(days)):
+            elif not_valid_after - not_valid_before != timedelta(days=int(days)):
                 LOGGER.warning(
                     f"Expiration date of self-signed certificate for {first_server} is different from the one in the configuration, regenerating ..."
                 )
-            elif certificate.not_valid_after_utc < datetime.now(tz=certificate.not_valid_after_utc.timetz().tzinfo):
+            elif not_valid_after < datetime.now(tz=not_valid_after.tzinfo):
                 LOGGER.warning(f"Self-signed certificate for {first_server} has expired, regenerating ...")
             else:
                 LOGGER.info(f"Self-signed certificate for {first_server} is valid")
@@ -141,8 +148,8 @@ try:
         JOB.del_cache("key.pem", service_id=first_server)
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
     status = 2
-    LOGGER.error(f"Exception while running self-signed.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running self-signed.py :\n{e}")
 
 sys_exit(status)

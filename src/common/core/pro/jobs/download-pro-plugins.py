@@ -8,12 +8,12 @@ from os.path import join
 from pathlib import Path
 from stat import S_IEXEC
 from sys import exit as sys_exit, path as sys_path
-from threading import Lock
+from time import sleep
+from traceback import format_exc
 from uuid import uuid4
 from json import JSONDecodeError, load as json_load, loads
 from shutil import copytree, rmtree
 from tarfile import open as tar_open
-from traceback import format_exc
 from zipfile import ZipFile
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("api",), ("db",))]:
@@ -21,6 +21,7 @@ for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in ((
         sys_path.append(deps_path)
 
 from requests import get
+from requests.exceptions import ConnectionError
 
 from Database import Database  # type: ignore
 from logger import setup_logger  # type: ignore
@@ -35,7 +36,7 @@ STATUS_MESSAGES = {
     "expired": "has expired",
     "suspended": "has been suspended",
 }
-LOGGER = setup_logger("Jobs.download-pro-plugins", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("Jobs.download-pro-plugins")
 status = 0
 
 
@@ -96,7 +97,7 @@ def install_plugin(plugin_path: Path, db, preview: bool = True) -> bool:
 try:
     db = Database(LOGGER, sqlalchemy_string=getenv("DATABASE_URI"))
     db_metadata = db.get_metadata()
-    current_date = datetime.now()
+    current_date = datetime.now().astimezone()
     pro_license_key = getenv("PRO_LICENSE_KEY", "").strip()
 
     LOGGER.info("Checking BunkerWeb Pro status...")
@@ -115,8 +116,11 @@ try:
         "pro_status": "invalid",
         "pro_overlapped": False,
         "pro_services": 0,
+        "non_draft_services": 0,
     }
-    metadata = {}
+    metadata = {
+        "non_draft_services": int(data["service_number"]),
+    }
     error = False
 
     temp_dir = TMP_DIR.joinpath(str(uuid4()))
@@ -125,7 +129,7 @@ try:
     if pro_license_key:
         LOGGER.info("BunkerWeb Pro license provided, checking if it's valid...")
         headers["Authorization"] = f"Bearer {pro_license_key}"
-        resp = get(f"{API_ENDPOINT}/pro/status", headers=headers, json=data, timeout=5, allow_redirects=True)
+        resp = get(f"{API_ENDPOINT}/pro/status", headers=headers, json=data, timeout=8, allow_redirects=True)
 
         if resp.status_code == 403:
             LOGGER.error(f"Access denied to {API_ENDPOINT}/pro-status - please check your BunkerWeb Pro access at https://panel.bunkerweb.io/")
@@ -156,10 +160,13 @@ try:
             if metadata["is_pro"] and metadata["pro_services"] < int(data["service_number"]):
                 metadata["pro_overlapped"] = True
 
+    db_metadata = db.get_metadata()
+
     # ? If we already checked today, skip the check and if the metadata is the same, skip the check
     if (
         pro_license_key == db_metadata.get("pro_license", "")
         and metadata.get("is_pro", False) == db_metadata["is_pro"]
+        and (not metadata.get("pro_overlapped", False) or metadata.get("non_draft_services", 0) == db_metadata.get("non_draft_services", 0))
         and db_metadata["last_pro_check"]
         and current_date.replace(hour=0, minute=0, second=0, microsecond=0) == db_metadata["last_pro_check"].replace(hour=0, minute=0, second=0, microsecond=0)
     ):
@@ -168,7 +175,7 @@ try:
 
     default_metadata["last_pro_check"] = current_date
     metadata = default_metadata | metadata
-    db.set_pro_metadata(metadata)
+    db.set_metadata(metadata)
 
     if metadata["is_pro"] != db_metadata["is_pro"]:
         clean_pro_plugins(db)
@@ -176,7 +183,7 @@ try:
     if metadata["is_pro"]:
         LOGGER.info("🚀 Your BunkerWeb Pro license is valid, checking if there are new or updated Pro plugins...")
 
-        resp = get(f"{API_ENDPOINT}/pro/download", headers=headers, json=data, timeout=5, stream=True, allow_redirects=True)
+        resp = get(f"{API_ENDPOINT}/pro/download", headers=headers, json=data, timeout=8, stream=True, allow_redirects=True)
 
         if resp.status_code == 403:
             LOGGER.error(f"Access denied to {API_ENDPOINT}/pro - please check your BunkerWeb Pro access at https://panel.bunkerweb.io/")
@@ -194,7 +201,7 @@ try:
 
             if clean:
                 metadata = default_metadata.copy()
-                db.set_pro_metadata(metadata)
+                db.set_metadata(metadata)
                 clean_pro_plugins(db)
             else:
                 LOGGER.warning("Skipping the check for new or updated Pro plugins...")
@@ -224,7 +231,18 @@ try:
             message = "No BunkerWeb Pro license key provided"
         LOGGER.warning(f"{message}, only checking if there are new or updated preview versions of Pro plugins...")
 
-        resp = get(f"{PREVIEW_ENDPOINT}/v{data['version']}.zip", timeout=5, stream=True, allow_redirects=True)
+        max_retries = 3
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                resp = get(f"{PREVIEW_ENDPOINT}/v{data['version']}.zip", timeout=8, stream=True, allow_redirects=True)
+                break
+            except ConnectionError as e:
+                retry_count += 1
+                if retry_count == max_retries:
+                    raise e
+                LOGGER.warning(f"Connection refused, retrying in 3 seconds... ({retry_count}/{max_retries})")
+                sleep(3)
 
         if resp.status_code == 404:
             LOGGER.error(f"Couldn't find Pro plugins for BunkerWeb version {data['version']} at {PREVIEW_ENDPOINT}/v{data['version']}.zip")
@@ -239,6 +257,7 @@ try:
             sys_exit(status)
         elif resp.status_code != 500:
             resp.raise_for_status()
+            # Add retry logic for connection refused errors
 
     if resp.status_code == 500:
         LOGGER.error("An error occurred with the remote server, please try again later")
@@ -302,14 +321,11 @@ try:
         pro_plugins.append(plugin_data)
         pro_plugins_ids.append(plugin_data["id"])
 
-    lock = Lock()
-
     for plugin in db.get_plugins(_type="pro", with_data=True):
         if plugin["method"] != "scheduler" and plugin["id"] not in pro_plugins_ids:
             pro_plugins.append(plugin)
 
-    with lock:
-        err = db.update_external_plugins(pro_plugins, _type="pro")
+    err = db.update_external_plugins(pro_plugins, _type="pro")
 
     if err:
         LOGGER.error(f"Couldn't update Pro plugins to database: {err}")
@@ -319,9 +335,10 @@ try:
     LOGGER.info("🚀 Pro plugins downloaded and installed successfully!")
 except SystemExit as e:
     status = e.code
-except:
+except BaseException as e:
+    LOGGER.debug(format_exc())
     status = 2
-    LOGGER.error(f"Exception while running download-pro-plugins.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running download-pro-plugins.py :\n{e}")
 
 for plugin_tmp in TMP_DIR.glob("*"):
     rmtree(plugin_tmp, ignore_errors=True)

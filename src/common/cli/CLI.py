@@ -4,23 +4,21 @@ from datetime import datetime
 from json import dumps, loads
 from operator import itemgetter
 from time import time
-from dotenv import dotenv_values
 from os import environ, getenv, sep
 from os.path import join
 from pathlib import Path
-from redis import StrictRedis, Sentinel
 from subprocess import DEVNULL, STDOUT, run
 from sys import path as sys_path
 from typing import Any, Optional, Tuple
 
-
-for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("utils",), ("db",))]:
+for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("api",), ("db",))]:
     if deps_path not in sys_path:
         sys_path.append(deps_path)
 
+from redis import StrictRedis, Sentinel
+
 from API import API  # type: ignore
 from ApiCaller import ApiCaller  # type: ignore
-from common_utils import get_integration  # type: ignore
 from logger import setup_logger  # type: ignore
 
 
@@ -55,12 +53,13 @@ def format_remaining_time(seconds):
 
 class CLI(ApiCaller):
     def __init__(self):
-        self.__logger = setup_logger("CLI", getenv("LOG_LEVEL", "INFO"))
+        self.__logger = setup_logger("CLI", getenv("CUSTOM_LOG_LEVEL", getenv("LOG_LEVEL", "INFO")))
         variables_path = Path(sep, "etc", "nginx", "variables.env")
         self.__variables = {}
         self.__db = None
         if variables_path.is_file():
-            self.__variables = dotenv_values(variables_path)
+            with variables_path.open() as f:
+                self.__variables = dict(line.strip().split("=", 1) for line in f if line.strip() and not line.startswith("#") and "=" in line)
 
         if Path(sep, "usr", "share", "bunkerweb", "db").exists():
             from Database import Database  # type: ignore
@@ -72,7 +71,10 @@ class CLI(ApiCaller):
 
         assert isinstance(self.__variables, dict), "Failed to get variables from database"
 
-        self.__integration = get_integration()
+        tz = getenv("TZ")
+        if tz:
+            self.__variables["TZ"] = tz
+
         self.__use_redis = self.__get_variable("USE_REDIS", "no") == "yes"
         self.__redis = None
         if self.__use_redis:
@@ -180,17 +182,12 @@ class CLI(ApiCaller):
                 self.__logger.error("USE_REDIS is set to yes but REDIS_HOST or REDIS_SENTINEL_HOSTS is not set, disabling redis")
                 self.__use_redis = False
 
-        if Path(sep, "usr", "sbin", "nginx").exists() or self.__integration == "Linux":
-            return super().__init__(
-                [
-                    API(
-                        f"http://127.0.0.1:{self.__get_variable('API_HTTP_PORT', '5000')}",
-                        host=self.__get_variable("API_SERVER_NAME", "bwapi"),
-                    )
-                ]
-            )
         super().__init__()
-        self.auto_setup(self.__integration)
+        if self.__db:
+            for db_instance in self.__db.get_instances():
+                self.apis.append(API(f"http://{db_instance['hostname']}:{db_instance['port']}", db_instance["server_name"]))
+        else:
+            self.apis.append(API(f"http://127.0.0.1:{self.__get_variable('API_HTTP_PORT', '5000')}", self.__get_variable("API_SERVER_NAME", "bwapi")))
 
     def __get_variable(self, variable: str, default: Optional[Any] = None) -> Optional[str]:
         return getenv(variable, self.__variables.get(variable, default))
@@ -214,7 +211,7 @@ class CLI(ApiCaller):
     def ban(self, ip: str, exp: float, reason: str) -> Tuple[bool, str]:
         if self.__redis:
             try:
-                ok = self.__redis.set(f"bans_ip_{ip}", dumps({"reason": reason, "date": time()}))
+                ok = self.__redis.set(f"bans_ip_{ip}", dumps({"reason": reason, "date": time(), "service": "bwcli"}))
                 if not ok:
                     self.__logger.error(f"Failed to ban {ip} in redis")
                 self.__redis.expire(f"bans_ip_{ip}", int(exp))
@@ -222,7 +219,7 @@ class CLI(ApiCaller):
                 self.__logger.error(f"Failed to ban {ip} in redis: {e}")
 
         try:
-            if self.send_to_apis("POST", "/ban", data={"ip": ip, "exp": exp, "reason": reason}):
+            if self.send_to_apis("POST", "/ban", data={"ip": ip, "exp": exp, "reason": reason, "service": "bwcli"}):
                 return True, f"IP {ip} has been banned for {format_remaining_time(exp)} with reason {reason}"
         except BaseException as e:
             return False, f"Failed to ban {ip}: {e}"
@@ -260,16 +257,41 @@ class CLI(ApiCaller):
                 cli_str += "No ban found\n"
 
             for ban in bans:
+                banned_country = ban.get("country", "unknown")
                 banned_date = ""
                 remaining = "for eternity"
                 if ban["date"] != -1:
-                    banned_date = f"the {datetime.fromtimestamp(ban['date']).strftime('%d-%m-%Y at %H:%M:%S')} "
+                    banned_date = f"the {datetime.fromtimestamp(ban['date']).strftime('%Y-%m-%d at %H:%M:%S %Z')} "
                 if ban["exp"] != -1:
                     remaining = f"for {format_remaining_time(ban['exp'])} remaining"
-                cli_str += f"- {ban['ip']} ; banned {banned_date}{remaining} with reason \"{ban.get('reason', 'no reason given')}\"\n"
+                cli_str += (
+                    f"- {ban['ip']} from country \"{banned_country}\" ; banned {banned_date}{remaining} with reason \"{ban.get('reason', 'no reason given')}\""
+                )
+
+                if ban.get("service", "unknown") != "unknown":
+                    cli_str += f" by {ban['service'] if ban['service'] != '_' else 'default server'}"
+
+                cli_str += "\n"
             cli_str += "\n"
 
         return True, cli_str
+
+    def plugin_list(self) -> Tuple[bool, str]:
+        if not self.__db:
+            raise Exception("This command can only be executed on the scheduler")
+
+        plugins = self.__db.get_plugins()
+        plugins_str = ""
+        for plugin in plugins:
+            if "bwcli" not in plugin:
+                continue
+
+            plugins_str += f"Plugin {plugin['id']} ({plugin['type']}) commands:\n"
+            for command in plugin["bwcli"]:
+                plugins_str += f"- {command}\n"
+            plugins_str += "\n"
+
+        return True, plugins_str
 
     def custom(self, plugin_id: str, command: str, *args: str, debug: bool = False) -> Tuple[bool, str]:
         if not self.__db:
@@ -294,9 +316,7 @@ class CLI(ApiCaller):
         command_path = (
             Path(sep, "usr", "share", "bunkerweb", "core", plugin_id)
             if plugin_type == "core"
-            else (
-                Path(sep, "etc", "bunkerweb", "plugins", plugin_id) if plugin_type == "external" else Path(sep, "etc", "bunkerweb", "pro", "plugins", plugin_id)
-            )
+            else (Path(sep, "etc", "bunkerweb", "pro", "plugins", plugin_id) if plugin_type == "pro" else Path(sep, "etc", "bunkerweb", "plugins", plugin_id))
         ).joinpath("bwcli", file_name)
 
         if not command_path.is_file():
@@ -307,7 +327,7 @@ class CLI(ApiCaller):
             cmd.extend(args)
 
         self.__logger.debug(f"Executing command {' '.join(cmd)}")
-        proc = run(cmd, stdin=DEVNULL, stderr=STDOUT, check=False, env=self.__variables | environ | ({"LOG_LEVEL": "DEBUG"} if debug else {}))  # type: ignore
+        proc = run(cmd, stdin=DEVNULL, stderr=STDOUT, check=False, env=self.__variables | environ | ({"LOG_LEVEL": "DEBUG"} if debug else {}) | ({"DATABASE_URI": self.__db.database_uri} if self.__db else {}))  # type: ignore
 
         if proc.returncode != 0:
             return False, f"Command {command} failed"

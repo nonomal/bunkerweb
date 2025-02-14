@@ -51,6 +51,11 @@ Here is how you can access the logs, depending on your integration :
 
 === "Swarm"
 
+    !!! warning "Deprecated"
+        The Swarm integration is deprecated and will be removed in a future release. Please consider using the [Docker autoconf integration](#__tabbed_1_2) instead.
+
+        **More information can be found in the [Swarm integration documentation](integrations.md#swarm).**
+
     !!! tip "List services"
     	To list the services, you can use the following command :
     	```shell
@@ -91,7 +96,7 @@ Here is how you can access the logs, depending on your integration :
 
 ## Permissions
 
-Don't forget that BunkerWeb runs as an unprivileged user for obvious security reasons. Double-check the permissions of files and folders used by BunkerWeb, especially if you use custom configurations (more info [here](quickstart-guide.md#custom-configurations)). You will need to set at least **RW** rights on files and **_RWX_** on folders.
+Don't forget that BunkerWeb runs as an unprivileged user for obvious security reasons. Double-check the permissions of files and folders used by BunkerWeb, especially if you use custom configurations (more info [here](advanced.md#custom-configurations)). You will need to set at least **RW** rights on files and **_RWX_** on folders.
 
 ## Disable security checks
 
@@ -186,11 +191,11 @@ As we can see, there are 3 different logs :
 
 One important thing to understand is that rule **949110** is not a "real" one : it's the one that will deny the request because the anomaly threshold is reached (which is **10** in this example). You should never remove the **949110** rule !
 
-If it's a false-positive, you should then focus on both **930120** and **932160** rules. ModSecurity and/or CRS tuning is out of the scope of this documentation but don't forget that you can apply custom configurations before and after the CRS is loaded (more info [here](quickstart-guide.md#custom-configurations)).
+If it's a false-positive, you should then focus on both **930120** and **932160** rules. ModSecurity and/or CRS tuning is out of the scope of this documentation but don't forget that you can apply custom configurations before and after the CRS is loaded (more info [here](advanced.md#custom-configurations)).
 
 ## Bad Behavior
 
-A common false-positive case is when the client is banned because of the "bad behavior" feature which means that too many suspicious HTTP status codes were generated within a time period (more info [here](security-tuning.md#bad-behavior)). You should start by reviewing the settings and then edit them according to your web application(s) like removing a suspicious HTTP code, decreasing the count time, increasing the threshold, ...
+A common false-positive case is when the client is banned because of the "bad behavior" feature which means that too many suspicious HTTP status codes were generated within a time period (more info [here](advanced.md#bad-behavior)). You should start by reviewing the settings and then edit them according to your web application(s) like removing a suspicious HTTP code, decreasing the count time, increasing the threshold, ...
 
 ## IP unban
 
@@ -222,6 +227,11 @@ You can manually unban an IP which can be useful when doing some tests but it ne
 
 === "Swarm"
 
+    !!! warning "Deprecated"
+        The Swarm integration is deprecated and will be removed in a future release. Please consider using the [Docker autoconf integration](#__tabbed_2_2) instead.
+
+        **More information can be found in the [Swarm integration documentation](integrations.md#swarm).**
+
     You can use the `docker exec` command (replace `myautoconf` with the name of your service) :
     ```shell
     docker exec $(docker ps -q -f name=myautoconf) bwcli unban 1.2.3.4
@@ -243,7 +253,7 @@ You can manually unban an IP which can be useful when doing some tests but it ne
 
 ## Whitelisting
 
-If you have bots that need to access your website, the recommended way to avoid any false positive is to whitelist them using the [whitelisting feature](security-tuning.md#blacklisting-whitelisting-and-greylisting). We don't recommend using the `WHITELIST_URI*` or `WHITELIST_USER_AGENT*` settings unless they are set to secret and unpredictable values. Common use cases are :
+If you have bots that need to access your website, the recommended way to avoid any false positive is to whitelist them using the [whitelisting feature](advanced.md#blacklisting-whitelisting-and-greylisting). We don't recommend using the `WHITELIST_URI*` or `WHITELIST_USER_AGENT*` settings unless they are set to secret and unpredictable values. Common use cases are :
 
 - Healthcheck / status bot
 - Callback like IPN or webhook
@@ -348,16 +358,19 @@ In case you lost your UI credentials or have 2FA issues, you can connect to the 
 
 **Troubleshooting actions**
 
-!!! info "Table schema"
+!!! info "Tables schema"
     The schema of the `bw_ui_users` table is the following :
 
     ```sql
-    id INTEGER PRIMARY KEY AUTOINCREMENT
-    username VARCHAR(256) NOT NULL UNIQUE
+    username VARCHAR(256) PRIMARY KEY NOT NULL
+    email VARCHAR(256) UNIQUE DEFAULT NULL
     password VARCHAR(60) NOT NULL
-    is_two_factor_enabled BOOLEAN NOT NULL DEFAULT 0
-    secret_token VARCHAR(32) DEFAULT NULL
-    method ("manual" or "ui") NOT NULL DEFAULT 'manual'
+    method ENUM('ui', 'scheduler', 'autoconf', 'manual', 'wizard') NOT NULL
+    admin BOOLEAN NOT NULL DEFAULT 0
+    theme ENUM('light', 'dark') NOT NULL DEFAULT 'light'
+    totp_secret VARCHAR(256) DEFAULT NULL
+    creation_date DATETIME NOT NULL
+    update_date DATETIME NOT NULL
     ```
 
 === "Retrieve username"
@@ -369,11 +382,13 @@ In case you lost your UI credentials or have 2FA issues, you can connect to the 
     ```
 
     You should see something like this :
-    ```text
-    1|<username>|<password_hash>|1|<secret_totp_token>|(manual or ui)
-    ```
 
-=== "Update password"
+    | username | email | password | method | admin | theme | totp_secret | creation_date | update_date |
+    | -------- | ----- | -------- | ------ | ----- | ----- | ----------- | ------------- | ----------- |
+    | ***      | ***   | ***      | manual | 1     | light | ***         | ***           | ***         |
+
+
+=== "Update admin user password"
 
     You first need to hash the new password using the bcrypt algorithm.
 
@@ -386,50 +401,54 @@ In case you lost your UI credentials or have 2FA issues, you can connect to the 
     Generate your hash (replace `mypassword` with your own password) :
 
     ```shell
-    python -c 'from bcrypt import hashpw, gensalt ; print(hashpw("mypassword".encode("utf-8"), gensalt(rounds=13)).decode())'
+    python3 -c 'from bcrypt import hashpw, gensalt ; print(hashpw(b"""mypassword""", gensalt(rounds=10)).decode("utf-8"))'
     ```
 
     You can update your username / password executing this command :
 
     ```sql
-    UPDATE bw_ui_users SET username = <username>, password = <password_hash> WHERE id = 1;
+    UPDATE bw_ui_users SET password = '<password_hash>' WHERE admin = 1;
     ```
 
     If you check again your `bw_ui_users` table following this command :
 
     ```sql
-    SELECT * FROM bw_ui_users;
+    SELECT * FROM bw_ui_users WHERE admin = 1;
     ```
 
     You should see something like this :
 
-    ```text
-    1|<username>|<password_hash>|0||(manual or ui)
-    ```
+    | username | email | password | method | admin | theme | totp_secret | creation_date | update_date |
+    | -------- | ----- | -------- | ------ | ----- | ----- | ----------- | ------------- | ----------- |
+    | ***      | ***   | ***      | manual | 1     | light | ***         | ***           | ***         |
 
     You should now be able to use the new credentials to log into the web UI.
 
-=== "Disable 2FA authentication"
+=== "Disable 2FA authentication for admin user"
 
     You can deactivate 2FA by executing this command :
 
     ```sql
-    UPDATE bw_ui_users SET is_two_factor_enabled = 0, secret_token = NULL WHERE id = 1;
+    UPDATE bw_ui_users SET totp_secret = NULL WHERE admin = 1;
     ```
 
     If you check again your `bw_ui_users` table by following this command :
 
     ```sql
-    SELECT * FROM bw_ui_users;
+    SELECT * FROM bw_ui_users WHERE admin = 1;
     ```
 
     You should see something like this :
 
-    ```text
-    1|<username>|<password_hash>|0||(manual or ui)
-    ```
+    | username | email | password | method | admin | theme | totp_secret | creation_date | update_date |
+    | -------- | ----- | -------- | ------ | ----- | ----- | ----------- | ------------- | ----------- |
+    | ***      | ***   | ***      | manual | 1     | light | NULL        | ***           | ***         |
 
-    You should now be able to log into the web UI only using your username and password.
+    You should now be able to log into the web UI only using your username and password without 2FA.
+
+=== "Refresh 2FA recovery codes"
+
+    The recovery codes can be refreshed in your **profile page** of the web UI under the `Security` tab.
 
 **Upload plugin**
 

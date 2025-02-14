@@ -1,4 +1,4 @@
-FROM nginx:1.26.2-alpine-slim@sha256:6a3378d408c49073bdbb0243219db1072f338b979b58660577a744044515f9f7 AS builder
+FROM nginx:1.26.3-alpine-slim@sha256:e22e10bd833136245b39ffeb1a0d7c672f5597c18df4c462f327cc44fe0aa7a8 AS builder
 
 # Install temporary requirements for the dependencies
 RUN apk add --no-cache bash autoconf libtool automake geoip-dev g++ gcc curl-dev libxml2-dev pcre-dev make linux-headers musl-dev gd-dev gnupg brotli-dev openssl-dev patch readline-dev yajl yajl-dev yajl-tools py3-pip
@@ -42,37 +42,40 @@ COPY src/common/utils utils
 COPY src/VERSION VERSION
 COPY misc/*.ascii misc/
 
-FROM nginx:1.26.2-alpine-slim@sha256:6a3378d408c49073bdbb0243219db1072f338b979b58660577a744044515f9f7
+FROM nginx:1.26.3-alpine-slim@sha256:e22e10bd833136245b39ffeb1a0d7c672f5597c18df4c462f327cc44fe0aa7a8
 
 # Set default umask to prevent huge recursive chmod increasing the final image size
 RUN umask 027
+
+# Install runtime dependencies
+RUN apk add --no-cache openssl pcre bash python3 yajl geoip libxml2 libgd curl tzdata
+
+# Fix CVEs
+RUN apk add --no-cache "openssl>=3.3.3-r0" "libssl3>=3.3.3-r0" "libcrypto3>=3.3.3-r0" # CVE-2024-12797
 
 # Copy dependencies
 COPY --from=builder --chown=0:101 /usr/share/bunkerweb /usr/share/bunkerweb
 
 WORKDIR /usr/share/bunkerweb
 
-# Install runtime dependencies, pypi packages, move bwcli, create data folders and set permissions
-RUN apk add --no-cache openssl pcre bash python3 yajl geoip libxml2 libgd curl && \
-	cp helpers/bwcli /usr/bin/ && \
-	mkdir -p /etc/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /var/www/html && \
+# Move bwcli, create data folders and set permissions
+RUN cp helpers/bwcli /usr/bin/ && \
+	mkdir -p /etc/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /var/www && \
 	mkdir -p /data/cache && ln -s /data/cache /var/cache/bunkerweb && \
+	mkdir -p /data/lib && ln -s /data/lib /var/lib/bunkerweb && \
+	mkdir -p /data/www && ln -s /data/www /var/www/html && \
 	for dir in $(echo "pro configs plugins") ; do mkdir -p "/data/${dir}" && ln -s "/data/${dir}" "/etc/bunkerweb/${dir}" ; done && \
-	for dir in $(echo "pro/plugins configs/http configs/stream configs/server-http configs/server-stream configs/default-server-http configs/default-server-stream configs/modsec configs/modsec-crs") ; do mkdir "/data/${dir}" ; done && \
-	chown -R root:nginx /data /etc/nginx /var/cache/bunkerweb /etc/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /usr/bin/bwcli && \
-	chmod -R 770 /data /etc/nginx /var/cache/bunkerweb /etc/bunkerweb /var/tmp/bunkerweb /var/log/bunkerweb /var/run/bunkerweb && \
+	for dir in $(echo "pro/plugins configs/http configs/stream configs/server-http configs/server-stream configs/default-server-http configs/default-server-stream configs/modsec configs/modsec-crs configs/crs-plugins-before configs/crs-plugins-after") ; do mkdir "/data/${dir}" ; done && \
+	chown -R root:nginx /data /etc/nginx /var/cache/bunkerweb /var/lib/bunkerweb /var/www/html /etc/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /usr/bin/bwcli && \
+	chmod -R 770 /data /etc/nginx /var/cache/bunkerweb /var/lib/bunkerweb /var/www/html /etc/bunkerweb /var/tmp/bunkerweb /var/log/bunkerweb /var/run/bunkerweb && \
 	chmod 750 cli/main.py gen/main.py helpers/*.sh entrypoint.sh /usr/bin/bwcli deps/python/bin/* && \
 	rm -f /var/log/bunkerweb/* && \
 	ln -s /proc/1/fd/2 /var/log/bunkerweb/error.log && \
 	ln -s /proc/1/fd/2 /var/log/bunkerweb/modsec_audit.log && \
 	ln -s /proc/1/fd/1 /var/log/bunkerweb/access.log
 
-# Fix CVEs
-RUN apk add --no-cache "curl>=8.9.1-r0" "libcurl>=8.9.1-r0" "pyc>=3.12.3-r2" "python3>=3.12.3-r2" "python3-pyc>=3.12.3-r2" "python3-pycache-pyc0>=3.12.3-r2" # CVE-2024-7264 CVE-2024-8088
-RUN apk add --no-cache "libcrypto3>=3.3.2-r0" "libssl3>=3.3.2-r0" "openssl>=3.3.2-r0" # CVE-2024-6119
-
 LABEL maintainer="Bunkerity <contact@bunkerity.com>"
-LABEL version="1.5.10"
+LABEL version="1.6.0"
 LABEL url="https://www.bunkerweb.io"
 LABEL bunkerweb.type="bunkerweb"
 LABEL bunkerweb.INSTANCE="bunkerweb"

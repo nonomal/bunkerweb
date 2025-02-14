@@ -7,12 +7,14 @@ local greylist = class("greylist", plugin)
 
 local ngx = ngx
 local ERR = ngx.ERR
+local INFO = ngx.INFO
 local get_phase = ngx.get_phase
 local has_variable = utils.has_variable
 local get_deny_status = utils.get_deny_status
 local get_rdns = utils.get_rdns
 local get_asn = utils.get_asn
 local regex_match = utils.regex_match
+local get_variable = utils.get_variable
 local ipmatcher_new = ipmatcher.new
 local tostring = tostring
 local open = io.open
@@ -22,12 +24,12 @@ function greylist:initialize(ctx)
 	plugin.initialize(self, "greylist", ctx)
 	-- Decode lists
 	if get_phase() ~= "init" and self:is_needed() then
-		local lists, err = self.datastore:get("plugin_greylist_lists", true)
-		if not lists then
+		local datastore_lists, err = self.datastore:get("plugin_greylist_lists_" .. self.ctx.bw.server_name, true)
+		if not datastore_lists then
 			self.logger:log(ERR, err)
 			self.lists = {}
 		else
-			self.lists = lists
+			self.lists = datastore_lists
 		end
 		local kinds = {
 			["IP"] = {},
@@ -37,11 +39,13 @@ function greylist:initialize(ctx)
 			["URI"] = {},
 		}
 		for kind, _ in pairs(kinds) do
+			if not self.lists[kind] then
+				self.lists[kind] = {}
+			end
 			for data in self.variables["GREYLIST_" .. kind]:gmatch("%S+") do
-				if not self.lists[kind] then
-					self.lists[kind] = {}
+				if data ~= "" then
+					table.insert(self.lists[kind], data)
 				end
-				table.insert(self.lists[kind], data)
 			end
 		end
 	end
@@ -65,10 +69,11 @@ function greylist:is_needed()
 end
 
 function greylist:init()
-	-- Check if init needed
+	-- Check if init is needed
 	if not self:is_needed() then
 		return self:ret(true, "init not needed")
 	end
+
 	-- Read greylists
 	local greylists = {
 		["IP"] = {},
@@ -77,23 +82,51 @@ function greylist:init()
 		["USER_AGENT"] = {},
 		["URI"] = {},
 	}
+
+	local server_name, err = get_variable("SERVER_NAME", false)
+	if not server_name then
+		return self:ret(false, "can't get SERVER_NAME variable : " .. err)
+	end
+
+	-- Iterate over each kind and server
 	local i = 0
-	for kind, _ in pairs(greylists) do
-		local f, _ = open("/var/cache/bunkerweb/greylist/" .. kind .. ".list", "r")
-		if f then
-			for line in f:lines() do
-				table.insert(greylists[kind], line)
-				i = i + 1
+	for key in server_name:gmatch("%S+") do
+		for kind, _ in pairs(greylists) do
+			local file_path = "/var/cache/bunkerweb/greylist/" .. key .. "/" .. kind .. ".list"
+			local f = open(file_path, "r")
+			if f then
+				for line in f:lines() do
+					if line ~= "" then
+						table.insert(greylists[kind], line)
+						i = i + 1
+					end
+				end
+				f:close()
 			end
-			f:close()
 		end
+
+		-- Load service specific ones into datastore
+		local ok
+		ok, err = self.datastore:set("plugin_greylist_lists_" .. key, greylists, nil, true)
+		if not ok then
+			return self:ret(false, "can't store greylist " .. key .. " list into datastore : " .. err)
+		end
+
+		self.logger:log(
+			INFO,
+			"successfully loaded " .. tostring(i) .. " IP/network/rDNS/ASN/User-Agent/URI for the service: " .. key
+		)
+
+		i = 0
+		greylists = {
+			["IP"] = {},
+			["RDNS"] = {},
+			["ASN"] = {},
+			["USER_AGENT"] = {},
+			["URI"] = {},
+		}
 	end
-	-- Load them into datastore
-	local ok, err = self.datastore:set("plugin_greylist_lists", greylists, nil, true)
-	if not ok then
-		return self:ret(false, "can't store greylist list into datastore : " .. err)
-	end
-	return self:ret(true, "successfully loaded " .. tostring(i) .. " bad IP/network/rDNS/ASN/User-Agent/URI")
+	return self:ret(true, "successfully loaded all IP/network/rDNS/ASN/User-Agent/URI")
 end
 
 function greylist:access()

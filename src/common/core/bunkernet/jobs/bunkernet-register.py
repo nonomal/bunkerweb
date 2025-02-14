@@ -3,7 +3,6 @@
 from os import getenv, sep
 from os.path import join
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 
 for deps_path in [join(sep, "usr", "share", "bunkerweb", *paths) for paths in (("deps", "python"), ("utils",), ("db",))]:
     if deps_path not in sys_path:
@@ -13,7 +12,7 @@ from bunkernet import register
 from logger import setup_logger  # type: ignore
 from jobs import Job  # type: ignore
 
-LOGGER = setup_logger("BUNKERNET", getenv("LOG_LEVEL", "INFO"))
+LOGGER = setup_logger("BUNKERNET.register")
 exit_status = 0
 
 try:
@@ -34,7 +33,7 @@ try:
         sys_exit(0)
 
     # Get ID from cache
-    JOB = Job(LOGGER)
+    JOB = Job(LOGGER, __file__)
     bunkernet_id = JOB.get_cache("instance.id")
 
     # Register instance
@@ -84,8 +83,8 @@ try:
             LOGGER.info("Successfully saved BunkerNet data to db cache")
 except SystemExit as e:
     exit_status = e.code
-except:
+except BaseException as e:
     exit_status = 2
-    LOGGER.error(f"Exception while running bunkernet-register.py :\n{format_exc()}")
+    LOGGER.error(f"Exception while running bunkernet-register.py :\n{e}")
 
 sys_exit(exit_status)

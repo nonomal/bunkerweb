@@ -6,15 +6,15 @@ BunkerWeb comes with a plugin system making it possible to easily add new featur
 
 Here is the list of "official" plugins that we maintain (see the [bunkerweb-plugins](https://github.com/bunkerity/bunkerweb-plugins) repository for more information) :
 
-|      Name      | Version | Description                                                                                                                      |                                                 Link                                                  |
-| :------------: | :-----: | :------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------: |
-|   **ClamAV**   |   1.6   | Automatically scans uploaded files with the ClamAV antivirus engine and denies the request when a file is detected as malicious. |     [bunkerweb-plugins/clamav](https://github.com/bunkerity/bunkerweb-plugins/tree/main/clamav)     |
-| **Coraza** |   1.6   | Inspect requests using a the Coraza WAF (alternative of ModSecurity).           | [bunkerweb-plugins/coraza](https://github.com/bunkerity/bunkerweb-plugins/tree/main/coraza) |
-|  **CrowdSec**  |   1.6   | CrowdSec bouncer for BunkerWeb.                                                                                                  |   [bunkerweb-plugins/crowdsec](https://github.com/bunkerity/bunkerweb-plugins/tree/main/crowdsec)   |
-| **Discord** | 1.6 | Send security notifications to a Discord channel using a Webhook. | [bunkerweb-plugins/discord](https://github.com/bunkerity/bunkerweb-plugins/tree/main/discord) |
-| **Slack** | 1.6 | Send security notifications to a Slack channel using a Webhook. | [bunkerweb-plugins/slack](https://github.com/bunkerity/bunkerweb-plugins/tree/main/slack) |
-| **VirusTotal** |   1.6   | Automatically scans uploaded files with the VirusTotal API and denies the request when a file is detected as malicious.          | [bunkerweb-plugins/virustotal](https://github.com/bunkerity/bunkerweb-plugins/tree/main/virustotal) |
-| **WebHook** | 1.6 | Send security notifications to a custom HTTP endpoint using a	Webhook. | [bunkerweb-plugins/webhook](https://github.com/bunkerity/bunkerweb-plugins/tree/main/webhook) |
+|      Name      | Version | Description                                                                                                                      |                                                Link                                                 |
+| :------------: | :-----: | :------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------: |
+|   **ClamAV**   |   1.8   | Automatically scans uploaded files with the ClamAV antivirus engine and denies the request when a file is detected as malicious. |     [bunkerweb-plugins/clamav](https://github.com/bunkerity/bunkerweb-plugins/tree/main/clamav)     |
+|   **Coraza**   |   1.8   | Inspect requests using a the Coraza WAF (alternative of ModSecurity).                                                            |     [bunkerweb-plugins/coraza](https://github.com/bunkerity/bunkerweb-plugins/tree/main/coraza)     |
+|  **CrowdSec**  |   1.8   | CrowdSec bouncer for BunkerWeb.                                                                                                  |   [bunkerweb-plugins/crowdsec](https://github.com/bunkerity/bunkerweb-plugins/tree/main/crowdsec)   |
+|  **Discord**   |   1.8   | Send security notifications to a Discord channel using a Webhook.                                                                |    [bunkerweb-plugins/discord](https://github.com/bunkerity/bunkerweb-plugins/tree/main/discord)    |
+|   **Slack**    |   1.8   | Send security notifications to a Slack channel using a Webhook.                                                                  |      [bunkerweb-plugins/slack](https://github.com/bunkerity/bunkerweb-plugins/tree/main/slack)      |
+| **VirusTotal** |   1.8   | Automatically scans uploaded files with the VirusTotal API and denies the request when a file is detected as malicious.          | [bunkerweb-plugins/virustotal](https://github.com/bunkerity/bunkerweb-plugins/tree/main/virustotal) |
+|  **WebHook**   |   1.8   | Send security notifications to a custom HTTP endpoint using a	Webhook.                                                           |    [bunkerweb-plugins/webhook](https://github.com/bunkerity/bunkerweb-plugins/tree/main/webhook)    |
 
 ## How to use a plugin
 
@@ -22,7 +22,7 @@ Here is the list of "official" plugins that we maintain (see the [bunkerweb-plug
 
 If you want to quickly install external plugins, you can use the `EXTERNAL_PLUGIN_URLS` setting. It takes a list of URLs, separated with space, pointing to compressed (zip format) archive containing one or more plugin(s).
 
-You can use the following value if you want to automatically install the official plugins : `EXTERNAL_PLUGIN_URLS=https://github.com/bunkerity/bunkerweb-plugins/archive/refs/tags/v1.6.zip`
+You can use the following value if you want to automatically install the official plugins : `EXTERNAL_PLUGIN_URLS=https://github.com/bunkerity/bunkerweb-plugins/archive/refs/tags/v1.8.zip`
 
 ### Manual
 
@@ -87,11 +87,10 @@ The first step is to install the plugin by putting the plugin files inside the c
     Then you can mount the volume when starting your Docker stack :
 
     ```yaml
-    version: '3.5'
     services:
     ...
       bw-scheduler:
-        image: bunkerity/bunkerweb-scheduler:1.5.10
+        image: bunkerity/bunkerweb-scheduler:1.6.0
         volumes:
           - ./bw-data:/data
     ...
@@ -124,17 +123,21 @@ The first step is to install the plugin by putting the plugin files inside the c
     Then you can mount the volume when starting your Docker stack :
 
     ```yaml
-    version: '3.5'
     services:
     ...
       bw-scheduler:
-        image: bunkerity/bunkerweb-scheduler:1.5.10
+        image: bunkerity/bunkerweb-scheduler:1.6.0
         volumes:
           - ./bw-data:/data
     ...
     ```
 
 === "Swarm"
+
+    !!! warning "Deprecated"
+        The Swarm integration is deprecated and will be removed in a future release. Please consider using the [Docker autoconf integration](#__tabbed_1_2) instead.
+
+        **More information can be found in the [Swarm integration documentation](integrations.md#swarm).**
 
     When using the [Swarm integration](integrations.md#swarm), plugins must be written to the volume mounted on `/data/plugins` into the scheduler container.
 
@@ -163,11 +166,10 @@ The first step is to install the plugin by putting the plugin files inside the c
     Then you can mount the volume when starting your Swarm stack :
 
     ```yaml
-    version: '3.5'
     services:
     ...
       bw-scheduler:
-        image: bunkerity/bunkerweb-scheduler:1.5.10
+        image: bunkerity/bunkerweb-scheduler:1.6.0
         volumes:
           - /shared/bw-plugins:/data/plugins
     ...
@@ -214,7 +216,7 @@ The first step is to install the plugin by putting the plugin files inside the c
           serviceAccountName: sa-bunkerweb
           containers:
             - name: bunkerweb-scheduler
-              image: bunkerity/bunkerweb-scheduler:1.5.10
+              image: bunkerity/bunkerweb-scheduler:1.6.0
               imagePullPolicy: Always
               env:
                 - name: KUBERNETES_MODE
@@ -254,7 +256,7 @@ The first step is to install the plugin by putting the plugin files inside the c
 
 !!! tip "Existing plugins"
 
-    If the documentation is not enough, you can have a look at the existing source code of [official plugins](https://github.com/bunkerity/bunkerweb-plugins) and the [core plugins](https://github.com/bunkerity/bunkerweb/tree/v1.5.10/src/common/core) (already included in BunkerWeb but they are plugins, technically speaking).
+    If the documentation is not enough, you can have a look at the existing source code of [official plugins](https://github.com/bunkerity/bunkerweb-plugins) and the [core plugins](https://github.com/bunkerity/bunkerweb/tree/v1.6.0/src/common/core) (already included in BunkerWeb but they are plugins, technically speaking).
 
 What a plugin structure looks like :
 ```
@@ -263,17 +265,21 @@ plugin /
         ui / actions.py
              template.html
         jobs / my-job.py
+        templates / my-template.json
+                    my-template / configs / conf_type / conf_name.conf
         plugin.lua
         plugin.json
 ```
 
-- **conf_name.conf** : add [custom NGINX configurations](quickstart-guide.md#custom-configurations) (as jinja2 templates)
+- **conf_name.conf** : add [custom NGINX configurations](advanced.md#custom-configurations) (as jinja2 templates)
 
 - **actions.py** : script to execute on flask server, this script is running on flask context, you have access to lib and utils like `jinja2`, `requests`, etc...
 
 - **template.html** : custom plugin page you can access from ui
 
 - **jobs py file** : custom python files executed as jobs by the scheduler
+
+- **my-template.json** : add [custom templates](concepts.md#templates) for the plugin to override settings' default values and apply custom configurations in an easy way
 
 - **plugin.lua** : code to execute on NGINX using [NGINX LUA module](https://github.com/openresty/lua-nginx-module)
 
@@ -322,29 +328,29 @@ A file named **plugin.json** and written at the root of the plugin folder must c
 
 Here are the details of the fields :
 
-|     Field     | Mandatory |  Type  | Description                                                                                                                                                                                        |
-| :-----------: | :-------: | :----: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|     `id`      |    yes    | string | Internal ID for the plugin : must be unique among other plugins (including "core" ones) and contain only lowercase chars.                                                                          |
-|    `name`     |    yes    | string | Name of your plugin.                                                                                                                                                                               |
-| `description` |    yes    | string | Description of your plugin.                                                                                                                                                                        |
-|   `version`   |    yes    | string | Version of your plugin.                                                                                                                                                                            |
-|   `stream`    |    yes    | string | Information about stream support : `no`, `yes` or `partial`.
-|  `settings`   |    yes    |  dict  | List of the settings of your plugin.                                                                                                                                                               |
-|    `jobs`     |    no     |  list  | List of the jobs of your plugin.                                                                                                                                                                   |
+|     Field     | Mandatory |  Type  | Description                                                                                                               |
+| :-----------: | :-------: | :----: | :------------------------------------------------------------------------------------------------------------------------ |
+|     `id`      |    yes    | string | Internal ID for the plugin : must be unique among other plugins (including "core" ones) and contain only lowercase chars. |
+|    `name`     |    yes    | string | Name of your plugin.                                                                                                      |
+| `description` |    yes    | string | Description of your plugin.                                                                                               |
+|   `version`   |    yes    | string | Version of your plugin.                                                                                                   |
+|   `stream`    |    yes    | string | Information about stream support : `no`, `yes` or `partial`.                                                              |
+|  `settings`   |    yes    |  dict  | List of the settings of your plugin.                                                                                      |
+|    `jobs`     |    no     |  list  | List of the jobs of your plugin.                                                                                          |
 
 Each setting has the following fields (the key is the ID of the settings used in a configuration) :
 
-|   Field    | Mandatory |  Type  | Description                                                  |
-| :--------: | :-------: | :----: | :----------------------------------------------------------- |
-| `context`  |    yes    | string | Context of the setting : `multisite` or `global`.            |
-| `default`  |    yes    | string | The default value of the setting.                            |
-|   `help`   |    yes    | string | Help text about the plugin (shown in web UI).                |
-|    `id`    |    yes    | string | Internal ID used by the web UI for HTML elements.            |
-|  `label`   |    yes    | string | Label shown by the web UI.                                   |
-|  `regex`   |    yes    | string | The regex used to validate the value provided by the user.   |
-|   `type`   |    yes    | string | The type of the field : `text`, `check`, `select` or `password`.         |
-| `multiple` |    no     | string | Unique ID to group multiple settings with numbers as suffix. |
-|  `select`  |    no     |  list  | List of possible string values when `type` is `select`.      |
+|   Field    | Mandatory |  Type  | Description                                                      |
+| :--------: | :-------: | :----: | :--------------------------------------------------------------- |
+| `context`  |    yes    | string | Context of the setting : `multisite` or `global`.                |
+| `default`  |    yes    | string | The default value of the setting.                                |
+|   `help`   |    yes    | string | Help text about the plugin (shown in web UI).                    |
+|    `id`    |    yes    | string | Internal ID used by the web UI for HTML elements.                |
+|  `label`   |    yes    | string | Label shown by the web UI.                                       |
+|  `regex`   |    yes    | string | The regex used to validate the value provided by the user.       |
+|   `type`   |    yes    | string | The type of the field : `text`, `check`, `select` or `password`. |
+| `multiple` |    no     | string | Unique ID to group multiple settings with numbers as suffix.     |
+|  `select`  |    no     |  list  | List of possible string values when `type` is `select`.          |
 
 Each job has the following fields :
 
@@ -356,7 +362,7 @@ Each job has the following fields :
 
 ### Configurations
 
-You can add custom NGINX configurations by adding a folder named **confs** with content similar to the [custom configurations](quickstart-guide.md#custom-configurations). Each subfolder inside the **confs** will contain [jinja2](https://jinja.palletsprojects.com) templates that will be generated and loaded at the corresponding context (`http`, `server-http`, `default-server-http`, `stream`, `server-stream`, `modsec` and `modsec-crs`).
+You can add custom NGINX configurations by adding a folder named **confs** with content similar to the [custom configurations](advanced.md#custom-configurations). Each subfolder inside the **confs** will contain [jinja2](https://jinja.palletsprojects.com) templates that will be generated and loaded at the corresponding context (`http`, `server-http`, `default-server-http`, `stream`, `server-stream`, `modsec`, `modsec-crs`, `crs-plugins-before` and `crs-plugins-after`).
 
 Here is an example for a configuration template file inside the **confs/server-http** folder named **example.conf** :
 
@@ -370,6 +376,10 @@ location /setting {
 ```
 
 `{{ DUMMY_SETTING }}` will be replaced by the value of the `DUMMY_SETTING` chosen by the user of the plugin.
+
+### Templates
+
+Check the [templates documentation](concepts.md#templates) for more information.
 
 ### LUA
 
@@ -431,15 +441,15 @@ return myplugin
 
 The declared functions are automatically called during specific contexts. Here are the details of each function :
 
-| Function |                                   Context                                    | Description                                                                                                                                               | Return value                                                                                                                                                                                                                                                                                                                            |
-| :------: | :--------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|  `init`  |   [init_by_lua](https://github.com/openresty/lua-nginx-module#init_by_lua)   | Called when NGINX just started or received a reload order. the typical use case is to prepare any data that will be used by your plugin.                  | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>|
-|  `set`  |   [set_by_lua](https://github.com/openresty/lua-nginx-module#set_by_lua)   | Called before each request received by the server.The typical use case is for computing before access phase.                 | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>|
-| `access` | [access_by_lua](https://github.com/openresty/lua-nginx-module#access_by_lua) | Called on each request received by the server. The typical use case is to do the security checks here and deny the request if needed.                     | `ret`, `msg`,`status`,`redirect`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li><li>`status` (number) : interrupt current process and return [HTTP status](https://github.com/openresty/lua-nginx-module#http-status-constants)</li><li>`redirect` (URL) : if set will redirect to given URL</li></ul> |
-|  `log`   |    [log_by_lua](https://github.com/openresty/lua-nginx-module#log_by_lua)    | Called when a request has finished (and before it gets logged to the access logs). The typical use case is to make stats or compute counters for example. | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                           |
-|  `log_default`   |    [log_by_lua](https://github.com/openresty/lua-nginx-module#log_by_lua)    | Same as `log` but only called on the default server. | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                           |
-| `preread` | [preread_by_lua](https://github.com/openresty/stream-lua-nginx-module#preread_by_lua_block) | Similar to the `access` function but for stream mode. | `ret`, `msg`,`status`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li><li>`status` (number) : interrupt current process and return [status](https://github.com/openresty/lua-nginx-module#http-status-constants)</li></ul> |
-| `log_stream` | [log_by_lua](https://github.com/openresty/stream-lua-nginx-module#log_by_lua_block) | Similar to the `log` function but for stream mode. | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul> |
+|   Function    |                                           Context                                           | Description                                                                                                                                               | Return value                                                                                                                                                                                                                                                                                                                                                          |
+| :-----------: | :-----------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|    `init`     |          [init_by_lua](https://github.com/openresty/lua-nginx-module#init_by_lua)           | Called when NGINX just started or received a reload order. the typical use case is to prepare any data that will be used by your plugin.                  | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                                                      |
+|     `set`     |           [set_by_lua](https://github.com/openresty/lua-nginx-module#set_by_lua)            | Called before each request received by the server.The typical use case is for computing before access phase.                                              | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                                                      |
+|   `access`    |        [access_by_lua](https://github.com/openresty/lua-nginx-module#access_by_lua)         | Called on each request received by the server. The typical use case is to do the security checks here and deny the request if needed.                     | `ret`, `msg`,`status`,`redirect`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li><li>`status` (number) : interrupt current process and return [HTTP status](https://github.com/openresty/lua-nginx-module#http-status-constants)</li><li>`redirect` (URL) : if set will redirect to given URL</li></ul> |
+|     `log`     |           [log_by_lua](https://github.com/openresty/lua-nginx-module#log_by_lua)            | Called when a request has finished (and before it gets logged to the access logs). The typical use case is to make stats or compute counters for example. | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                                                      |
+| `log_default` |           [log_by_lua](https://github.com/openresty/lua-nginx-module#log_by_lua)            | Same as `log` but only called on the default server.                                                                                                      | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                                                      |
+|   `preread`   | [preread_by_lua](https://github.com/openresty/stream-lua-nginx-module#preread_by_lua_block) | Similar to the `access` function but for stream mode.                                                                                                     | `ret`, `msg`,`status`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li><li>`status` (number) : interrupt current process and return [status](https://github.com/openresty/lua-nginx-module#http-status-constants)</li></ul>                                                                              |
+| `log_stream`  |     [log_by_lua](https://github.com/openresty/stream-lua-nginx-module#log_by_lua_block)     | Similar to the `log` function but for stream mode.                                                                                                        | `ret`, `msg`<ul><li>`ret` (boolean) : true if no error or else false</li><li>`msg` (string) : success or error message</li></ul>                                                                                                                                                                                                                                      |
 
 #### Libraries
 
@@ -524,7 +534,7 @@ end
 
 !!! tip "More examples"
 
-    If you want to see the full list of available functions, you can have a look at the files present in the [lua directory](https://github.com/bunkerity/bunkerweb/tree/v1.5.10/src/bw/lua/bunkerweb) of the repository.
+    If you want to see the full list of available functions, you can have a look at the files present in the [lua directory](https://github.com/bunkerity/bunkerweb/tree/v1.6.0/src/bw/lua/bunkerweb) of the repository.
 
 ### Jobs
 

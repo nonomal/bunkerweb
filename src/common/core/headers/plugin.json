@@ -17,7 +17,7 @@
     },
     "REMOVE_HEADERS": {
       "context": "multisite",
-      "default": "Server Expect-CT X-Powered-By X-AspNet-Version X-AspNetMvc-Version",
+      "default": "Server Expect-CT X-Powered-By X-AspNet-Version X-AspNetMvc-Version Public-Key-Pins",
       "help": "Headers to remove (Header1 Header2 Header3 ...)",
       "id": "remove-headers",
       "label": "Remove headers",
@@ -26,7 +26,7 @@
     },
     "KEEP_UPSTREAM_HEADERS": {
       "context": "multisite",
-      "default": "Content-Security-Policy Permissions-Policy Feature-Policy X-Frame-Options",
+      "default": "Content-Security-Policy Permissions-Policy X-Frame-Options",
       "help": "Headers to keep from upstream (Header1 Header2 Header3 ... or * for all).",
       "id": "keep-upstream-headers",
       "label": "Keep upstream headers",
@@ -35,11 +35,11 @@
     },
     "STRICT_TRANSPORT_SECURITY": {
       "context": "multisite",
-      "default": "max-age=31536000",
-      "help": "Value for the Strict-Transport-Security header.",
+      "default": "max-age=63072000; includeSubDomains; preload",
+      "help": "Value for the Strict-Transport-Security (HSTS) header.",
       "id": "strict-transport-security",
-      "label": "Strict-Transport-Security",
-      "regex": "^max-age=\\d+(; includeSubDomains(; preload)?)?$",
+      "label": "Strict-Transport-Security (HSTS)",
+      "regex": "^(max-age=\\d+(; includeSubDomains(; preload)?)?)?$",
       "type": "text"
     },
     "COOKIE_FLAGS": {
@@ -48,7 +48,7 @@
       "help": "Cookie flags automatically added to all cookies (value accepted for nginx_cookie_flag_module).",
       "id": "cookie-flags",
       "label": "Cookie flags",
-      "regex": "^(\\*|[^;]+)( (HttpOnly|(SameSite)(?!.*\\4)(=(Lax|Strict))?)(?!.*\\3))*$",
+      "regex": "^(\\*|[^\\s;]+)?(\\s*(([Ee]xpires)(?!.*\\4)=[^\\s;]+|([Dd]omain)(?!.*\\5)=[^\\s;]+|([Pp]ath)(?!.*\\6)=[^\\s;]+|[Hh]ttp[Oo]nly|[Ss]ame[Ss]ite(=([Ll]ax|[Ss]trict|[NN]one))?|[Ss]ecure)(?!.*\\3))*$",
       "type": "text",
       "multiple": "cookie-flags"
     },
@@ -90,20 +90,11 @@
     },
     "PERMISSIONS_POLICY": {
       "context": "multisite",
-      "default": "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), usb=(), web-share=(), xr-spatial-tracking=()",
+      "default": "accelerometer=(), ambient-light-sensor=(), attribution-reporting=(), autoplay=(), battery=(), bluetooth=(), browsing-topics=(), camera=(), compute-pressure=(), display-capture=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), otp-credentials=(), payment=(), picture-in-picture=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), usb=(), web-share=(), window-management=(), xr-spatial-tracking=(), interest-cohort=()",
       "help": "Value for the Permissions-Policy header.",
       "id": "permissions-policy",
       "label": "Permissions-Policy",
       "regex": "^(?![, ])(,? ?([a-z\\-]+)(?!.*[^\\-]\\2=)=(\\*|\\(( ?(self|\\u0022https?:\\/\\/[\\-\\w@:%.+~#=]+[\\-\\w\\(\\)!@:%+.~#?&\\/=$]*\\u0022)(?=[ \\)]))*\\)))*$",
-      "type": "text"
-    },
-    "FEATURE_POLICY": {
-      "context": "multisite",
-      "default": "accelerometer 'none'; ambient-light-sensor 'none'; autoplay 'none'; battery 'none'; camera 'none'; display-capture 'none'; document-domain 'none'; encrypted-media 'none'; execution-while-not-rendered 'none'; execution-while-out-of-viewport 'none'; fullscreen 'none'; geolocation 'none'; gyroscope 'none'; layout-animation 'none'; legacy-image-formats 'none'; magnetometer 'none'; microphone 'none'; midi 'none'; navigation-override 'none'; payment 'none'; picture-in-picture 'none'; publickey-credentials-get 'none'; speaker-selection 'none'; sync-xhr 'none'; unoptimized-images 'none'; unsized-media 'none'; usb 'none'; screen-wake-lock 'none'; web-share 'none'; xr-spatial-tracking 'none';",
-      "help": "Value for the Feature-Policy header.",
-      "id": "feature-policy",
-      "label": "Feature-Policy",
-      "regex": "^(?![; ])( ?([\\w\\-]+)(?!.*[^\\-]\\2 )( ('(none|self|strict-dynamic|report-sample|unsafe-inline|unsafe-eval|unsafe-hashes|unsafe-allow-redirects)'|https?:\\/\\/[\\w@:%.+~#=\\-]+[\\w\\(\\)!@:%+.~#?&\\/=$\\-]*))+;)*$",
       "type": "text"
     },
     "X_FRAME_OPTIONS": {
@@ -126,14 +117,15 @@
       "type": "select",
       "select": ["", "nosniff"]
     },
-    "X_XSS_PROTECTION": {
+    "X_DNS_PREFETCH_CONTROL": {
       "context": "multisite",
-      "default": "1; mode=block",
-      "help": "Value for the X-XSS-Protection header.",
-      "id": "x-xss-protection",
-      "label": "X-XSS-Protection",
-      "regex": "^0|1(; (mode=block|report=https?:\\/\\/[\\-\\w@:%.+~#=]+[\\-\\w\\(\\)!@:%+.~#?&\\/=$]*))?$",
-      "type": "text"
+      "default": "off",
+      "help": "Value for the X-DNS-Prefetch-Control header.",
+      "id": "x-dns-prefetch-control",
+      "label": "X-DNS-Prefetch-Control",
+      "regex": "^(on|off)$",
+      "type": "select",
+      "select": ["on", "off"]
     }
   }
 }

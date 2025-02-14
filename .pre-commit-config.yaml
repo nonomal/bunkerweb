@@ -1,9 +1,9 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: (^LICENSE.md$|^src/VERSION$|^env/|^src/(bw/misc/root-ca.pem$|deps/src/|common/core/modsecurity/files|ui/static/(js/(editor/|utils/purify/|tsparticles\.bundle\.min\.js)|css/dashboard\.css))|\.(svg|drawio|patch\d?|ascii|tf|tftpl|key)$)
+exclude: (^src/ui/client|^LICENSE.md$|^src/VERSION$|^env/|^examples/community/|^src/(bw/misc/root-ca.pem$|deps/src/|common/core/modsecurity/files|ui/static/(js/(editor/|utils/purify/|tsparticles\.bundle\.min\.js)|css/dashboard\.css))|\.(svg|drawio|patch\d?|ascii|tf|tftpl|key)$)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 2c9f875913ee60ca25ce70243dc24d5b6415598c # frozen: v4.6.0
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b # frozen: v5.0.0
     hooks:
       - id: requirements-txt-fixer
         name: Fix requirements.txt and requirements.in files
@@ -17,7 +17,7 @@ repos:
       - id: check-case-conflict
 
   - repo: https://github.com/psf/black
-    rev: 3702ba224ecffbcec30af640c149f231d90aebdb # frozen: 24.4.2
+    rev: 8a737e727ac5ab2f1d4cf5876720ed276dc8dc4b # frozen: 25.1.0
     hooks:
       - id: black
         name: Black Python Formatter
@@ -30,7 +30,7 @@ repos:
         name: Prettier Code Formatter
 
   - repo: https://github.com/JohnnyMorganz/StyLua
-    rev: 84c370104d6a8d1eef00c80a3ebd42f7033aaaad # frozen: v0.20.0
+    rev: d28c0d0a381ac3e2a8efcab1433c732fbc249d86 # frozen: v2.0.2
     hooks:
       - id: stylua-github
         exclude: ^src/(bw/lua/middleclass.lua|common/core/antibot/captcha.lua)$
@@ -43,11 +43,12 @@ repos:
         args: ["--std", "min", "--codes", "--ranges", "--no-cache"]
 
   - repo: https://github.com/pycqa/flake8
-    rev: 7d37d9032d0d161634be4554273c30efd4dea0b3 # frozen: 7.0.0
+    rev: e43806be3607110919eff72939fda031776e885a # frozen: 7.1.1
     hooks:
       - id: flake8
         name: Flake8 Python Linter
         args: ["--max-line-length=160", "--ignore=E266,E402,E501,E722,W503"]
+        exclude: ^src/common/db/alembic/(mariadb|mysql|postgresql|sqlite)_versions
 
   - repo: https://github.com/dosisod/refurb
     rev: 2e31f0033b6c00bf99912fc6a8b5fd00460c9ba0 # frozen: v2.0.0
@@ -57,17 +58,17 @@ repos:
         exclude: ^tests/
 
   - repo: https://github.com/codespell-project/codespell
-    rev: 193cd7d27cd571f79358af09a8fb8997e54f8fff # frozen: v2.3.0
+    rev: 63c8f8312b7559622c0d82815639671ae42132ac # frozen: v2.4.1
     hooks:
       - id: codespell
         name: Codespell Spell Checker
-        exclude: (^src/(ui/templates|common/core/.+/files|bw/loading)/.+.html|modsecurity-rules.conf.*|src/ui/static/js/lottie-web.min.js)$
-        entry: codespell --ignore-regex="(tabEl|Widgits)" --skip src/ui/static/js/utils/flatpickr.js,src/ui/static/css/style.css,CHANGELOG.md,CODE_OF_CONDUCT.md
+        exclude: (^src/(ui/templates|common/core/.+/files|bw/loading)/.+.html|modsecurity-rules.conf.*|src/ui/app/static/(fonts|libs)/.+)$
+        entry: codespell --ignore-regex="(tabEl|Widgits)" --skip CHANGELOG.md,CODE_OF_CONDUCT.md,src/ui/client/build.py,src/ui/app/static/json/countries.geojson,src/ui/app/static/js/pages/bans.js,src/ui/app/static/json/periscop.min.json,src/ui/app/static/json/blockhaus.min.json,src/ui/app/routes/reports.py,src/ui/app/static/js/pages/reports.js
         language: python
         types: [text]
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: 145400593c178304246371bc45290588bc72f43e # frozen: v8.18.2
+    rev: 21b227eb964c6ba8e75291665962ccc5dbb8a986 # frozen: v8.23.3
     hooks:
       - id: gitleaks
 
@@ -75,3 +76,4 @@ repos:
     rev: 2491238703a5d3415bb2b7ff11388bf775372f29 # frozen: v0.10.0
     hooks:
       - id: shellcheck
+        exclude: ^tests/

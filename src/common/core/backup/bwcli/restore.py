@@ -5,13 +5,12 @@ from datetime import datetime
 from os.path import join, sep
 from pathlib import Path
 from sys import exit as sys_exit, path as sys_path
-from traceback import format_exc
 
 deps_path = join(sep, "usr", "share", "bunkerweb", "core", "backup")
 if deps_path not in sys_path:
     sys_path.append(deps_path)
 
-from utils import acquire_db_lock, backup_database, BACKUP_DIR, DB_LOCK_FILE, LOGGER, restore_database
+from backup import acquire_db_lock, backup_database, BACKUP_DIR, DB_LOCK_FILE, LOGGER, restore_database
 
 status = 0
 
@@ -49,7 +48,7 @@ try:
         sys_exit(1)
 
     LOGGER.info("Backing up the current database before restoring the backup ...")
-    current_time = datetime.now()
+    current_time = datetime.now().astimezone()
     tmp_backup_dir = Path(sep, "tmp", "bunkerweb", "backups")
     tmp_backup_dir.mkdir(parents=True, exist_ok=True)
     db = backup_database(current_time, backup_dir=tmp_backup_dir)
@@ -58,8 +57,8 @@ try:
     restore_database(backup_file, db)
 except SystemExit as se:
     status = se.code
-except:
-    LOGGER.error(f"Error while executing backup restore command :\n{format_exc()}")
+except BaseException as e:
+    LOGGER.error(f"Error while executing backup restore command: {e}")
     status = 1
 finally:
     DB_LOCK_FILE.unlink(missing_ok=True)

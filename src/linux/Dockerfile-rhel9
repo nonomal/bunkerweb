@@ -1,7 +1,7 @@
-FROM redhat/ubi9:9.4@sha256:1ee4d8c50d14d9c9e9229d9a039d793fcbc9aa803806d194c957a397cf1d2b17 AS builder
+FROM redhat/ubi9:9.5@sha256:53d6c19d664f4f418ce5c823d3a33dbb562a2550ea249cf07ef10aa063ace38f AS builder
 
 ENV OS=rhel
-ENV NGINX_VERSION=1.26.2
+ENV NGINX_VERSION=1.26.3
 
 # Copy rocky repo
 COPY src/linux/rocky-9.repo /etc/yum.repos.d/rocky.repo
@@ -16,8 +16,8 @@ RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-Rocky-9
 # Install Nginx, fpm and dependencies
 RUN dnf install -y wget make yum-utils && \
   dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-  dnf install -y --skip-broken --setopt=install_weak_deps=False --nobest openssl-libs openssl-devel && \
-  dnf install -y --skip-broken --setopt=install_weak_deps=False readline-devel python39 brotli brotli-devel gperftools-devel perl libxslt-devel libxml2 yajl libxslt bash gd gd-devel gcc-c++ znc-modtcl gawk libtool pcre-devel automake autoconf gcc make git zlib-devel libxml2-devel pkgconf libcurl-devel libmaxminddb && \
+  rpm -e --nodeps openssl-fips-provider-so && \
+  dnf install -y --skip-broken --setopt=install_weak_deps=False openssl-libs openssl-devel readline-devel python39 python3-devel brotli brotli-devel gperftools-devel perl libxslt-devel libxml2 yajl libxslt bash gd gd-devel gcc-c++ znc-modtcl gawk libtool pcre-devel automake autoconf gcc make git zlib-devel libxml2-devel pkgconf libcurl-devel libmaxminddb && \
   dnf install -y https://nginx.org/packages/rhel/9/$(uname -m)/RPMS/nginx-${NGINX_VERSION}-1.el9.ngx.$(uname -m).rpm
 
 WORKDIR /tmp/bunkerweb/deps
@@ -42,12 +42,12 @@ WORKDIR /usr/share/bunkerweb
 
 # Compile and install dependencies
 RUN export MAKEFLAGS="-j$(nproc)" && \
-  mkdir -p deps/python && \
-  python3 -m ensurepip --upgrade && \
-  python3 -m pip install --no-cache-dir --require-hashes --ignore-installed -r /tmp/requirements-deps.txt && \
-  python3 -m pip install --no-cache-dir --require-hashes --target deps/python $(for file in $(ls /tmp/req/requirements*.txt) ; do echo "-r ${file}" ; done | xargs)
+    mkdir -p deps/python && \
+    python3 -m ensurepip --upgrade && \
+    python3 -m pip install --no-cache-dir --require-hashes --ignore-installed -r /tmp/requirements-deps.txt && \
+    python3 -m pip install --no-cache-dir --require-hashes --force-reinstall --target deps/python $(for file in $(ls /tmp/req/requirements*.txt) ; do echo "-r ${file}" ; done | xargs)
 
-# Copy BW files
+# Copy files
 # can't exclude deps from . so we are copying everything by hand
 COPY src/bw/loading loading
 COPY src/bw/lua lua
@@ -61,21 +61,14 @@ COPY src/common/gen gen
 COPY src/common/helpers helpers
 COPY src/common/settings.json settings.json
 COPY src/common/utils utils
-COPY src/common/templates templates
 COPY src/scheduler scheduler
-COPY src/ui ui
 COPY src/VERSION VERSION
+COPY src/ui ui
 
-FROM redhat/ubi9:9.4@sha256:1ee4d8c50d14d9c9e9229d9a039d793fcbc9aa803806d194c957a397cf1d2b17
+FROM redhat/ubi9:9.5@sha256:53d6c19d664f4f418ce5c823d3a33dbb562a2550ea249cf07ef10aa063ace38f
 
 # Set default umask to prevent huge recursive chmod increasing the final image size
 RUN umask 027
-
-# Copy dependencies
-COPY --from=builder --chown=0:101 /etc/nginx /etc/nginx
-COPY --from=builder --chown=0:101 /usr/share/bunkerweb /usr/share/bunkerweb
-
-WORKDIR /usr/share/bunkerweb
 
 # Install fpm
 RUN dnf install -y wget redhat-rpm-config rpm-build yum-utils gcc make && \
@@ -83,28 +76,31 @@ RUN dnf install -y wget redhat-rpm-config rpm-build yum-utils gcc make && \
   rpm -Uvh epel-release*rpm && \
   dnf module -y reset ruby && dnf module -y enable ruby:3.1 && dnf module -y install ruby:3.1/common && \
   dnf install -y ruby-devel && \
-  gem install fpm
-
-# Setup BW
-RUN cp helpers/bwcli /usr/bin/ && \
-  chmod 755 /usr/bin/bwcli && \
-  mkdir -p /etc/bunkerweb/configs /etc/bunkerweb/plugins /var/cache/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /var/lib/bunkerweb /var/www/html && \
-  echo "Linux" > INTEGRATION && \
-  for dir in $(echo "plugins pro/plugins configs/http configs/stream configs/server-http configs/server-stream configs/default-server-http configs/default-server-stream configs/modsec configs/modsec-crs") ; do mkdir -p "/etc/bunkerweb/${dir}" ; done && \
-  find . -path deps -prune -o -type f -exec chmod 0740 {} \; && \
-  find . -path deps -prune -o -type d -exec chmod 0750 {} \; && \
-  chmod 755 /var/log/bunkerweb && \
-  touch /var/log/bunkerweb/error.log /var/log/bunkerweb/access.log /var/log/bunkerweb/modsec_audit.log && \
-  chmod 770 /var/cache/bunkerweb/ /var/tmp/bunkerweb/ /var/run/bunkerweb/ && \
-  chmod 750 gen/*.py scheduler/*.py cli/*.py ui/*.py ui/src/*.py helpers/*.sh /var/www/ && \
-  find core/*/jobs/* -type f -exec chmod 750 {} \; && \
-  find core/*/bwcli/* -type f -exec chmod 750 {} \; && \
-  chmod 755 .
-
-# Cleanup
-RUN dnf -y --setopt=install_weak_deps=False autoremove && \
+  gem install fpm && \
+  dnf -y --setopt=install_weak_deps=False autoremove && \
   dnf clean all && \
   rm -rf /var/cache/dnf
+
+# Copy dependencies
+COPY --from=builder --chown=0:101 /etc/nginx /etc/nginx
+COPY --from=builder --chown=0:101 /usr/share/bunkerweb /usr/share/bunkerweb
+
+WORKDIR /usr/share/bunkerweb
+
+# Setup BunkerWeb
+RUN install -m 755 helpers/bwcli /usr/bin/bwcli && \
+    echo "Linux" > INTEGRATION && \
+    mkdir -p /etc/bunkerweb/configs /etc/bunkerweb/plugins /var/cache/bunkerweb /var/tmp/bunkerweb /var/run/bunkerweb /var/log/bunkerweb /var/lib/bunkerweb /var/www/html && \
+    for dir in $(echo "plugins pro/plugins configs/http configs/stream configs/server-http configs/server-stream configs/default-server-http configs/default-server-stream configs/modsec configs/modsec-crs configs/crs-plugins-before configs/crs-plugins-after") ; do mkdir -p "/etc/bunkerweb/${dir}" ; done && \
+    find . -path ./deps -prune -o -type f -print0 | xargs -0 chmod 0740 && \
+    find . -path ./deps -prune -o -type d -print0 | xargs -0 chmod 0750 && \
+    chmod 755 /var/log/bunkerweb && \
+    touch /var/log/bunkerweb/error.log /var/log/bunkerweb/access.log /var/log/bunkerweb/modsec_audit.log && \
+    chmod 770 /var/cache/bunkerweb/ /var/tmp/bunkerweb/ /var/run/bunkerweb/ db/alembic db/alembic/alembic.ini db/alembic/env.py && \
+    chmod 750 gen/*.py scheduler/*.py cli/*.py ui/*.sh helpers/*.sh /var/www/ && \
+    find core/ -type f -name "*.sh" ! -path "core/modsecurity/files/*" -print0 | xargs -0 chmod 750 && \
+    find core/ ui/ -type f -name "*.py" ! -path "core/modsecurity/files/*" -print0 | xargs -0 chmod 750 && \
+    chmod 755 .
 
 COPY --chmod=660 src/bw/misc/asn.mmdb /var/tmp/bunkerweb/asn.mmdb
 COPY --chmod=660 src/bw/misc/country.mmdb /var/tmp/bunkerweb/country.mmdb

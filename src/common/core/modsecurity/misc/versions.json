@@ -2,17 +2,17 @@
   "git_repository": [
     {
       "id": "coreruleset-v3",
-      "name": "Coreruleset v3.3.5",
+      "name": "Coreruleset v3.3.7",
       "url": "https://github.com/coreruleset/coreruleset.git",
-      "commit": "0bd51ff806c68e2a54c4d60ca13f731c5355696d",
-      "post_install": "rm -rf files/coreruleset-v3/tests && cp files/coreruleset-v3/crs-setup.conf.example files/crs-setup-v3.conf"
+      "commit": "daedded8fe6f132e7db8875f9dd0b02850215b74",
+      "post_install": "rm -rf files/coreruleset-v3/tests files/coreruleset-v3/.github files/coreruleset-v3/docs && mv files/coreruleset-v3/crs-setup.conf.example files/crs-setup-v3.conf && ./misc/patch.sh 3"
     },
     {
       "id": "coreruleset-v4",
-      "name": "Coreruleset v4.5.0",
+      "name": "Coreruleset v4.11.0",
       "url": "https://github.com/coreruleset/coreruleset.git",
-      "commit": "a6913506683b3972ce18940f32298711f217fa54",
-      "post_install": "rm -rf files/coreruleset-v4/tests && cp files/coreruleset-v4/crs-setup.conf.example files/crs-setup-v4.conf"
+      "commit": "31c7a4be45ca366a93f060a3734fdf9ada80d6d5",
+      "post_install": "rm -rf files/coreruleset-v4/tests files/coreruleset-v4/.github files/coreruleset-v4/docs && mv files/coreruleset-v4/crs-setup.conf.example files/crs-setup-v4.conf && ./misc/patch.sh 4"
     }
   ]
 }

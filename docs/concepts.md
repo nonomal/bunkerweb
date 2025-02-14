@@ -1,8 +1,14 @@
 # Concepts
 
+## Architecture
+
 <figure markdown>
   ![Overview](assets/img/concepts.svg){ align=center, width="600" }
 </figure>
+
+Within your infrastructure, BunkerWeb acts as a reverse proxy in front of your web services. The typical architecture consists of accessing BunkerWeb from the Internet, which then forwards requests to the appropriate application service on a secure network.
+
+Using BunkerWeb that way (classical reverse proxy architecture) with TLS offloading and centralized security policies enhances performance by reducing encryption overhead on backend servers while ensuring consistent access control, threat mitigation, and compliance enforcement across all services.
 
 ## Integrations
 
@@ -24,9 +30,9 @@ If you think that a new integration should be supported, do not hesitate to open
 
 ## Settings
 
-!!! tip "Pro settings"
+!!! tip "PRO settings"
 
-    Some plugins are reserved for the **pro version**. [Find out more about the pro version here.](https://panel.bunkerweb.io/?utm_campaign=self&utm_source=doc#pro)
+    Some plugins are reserved for the **PRO version**. [Find out more about the pro version here.](https://panel.bunkerweb.io/?utm_campaign=self&utm_source=doc#pro)
 
 Once BunkerWeb is integrated into your environment, you will need to configure it to serve and protect your web applications.
 
@@ -43,6 +49,21 @@ USE_MODSECURITY=no
 USE_GZIP=yes
 USE_BROTLI=no
 ```
+
+Please note that if you are using the web User Interface, the setting names are also displayed in addition to a "human-friendly" label :
+
+<figure markdown>
+  ![Overview](assets/img/settings-ui1.png){ align=center, width="800" }
+  <figcaption>Settings name in the web UI</figcaption>
+</figure>
+
+You can also use the search bar and directly specify a setting name :
+
+<figure markdown>
+  ![Overview](assets/img/settings-ui2.png){ align=center, width="600" }
+  <figcaption>Settings search in the web UI</figcaption>
+</figure>
+
 
 !!! info "Going further"
 
@@ -81,9 +102,16 @@ app2.example.com_WHITELIST_COUNTRY=FR
 app3.example.com_USE_BAD_BEHAVIOR=no
 ```
 
+Please note that multisite mode is implicit when using the web User Interface. You have the option to apply configurations directly to your services or to set a global configuration that will be applied to all your services (you can still apply exceptions directly to specific services) :
+
+<figure markdown>
+  ![Overview](assets/img/ui-multisite.png){ align=center, width="600" }
+  <figcaption>Apply a setting to all services from the web UI</figcaption>
+</figure>
+
 !!! info "Going further"
 
-    You will find concrete examples of multisite mode in the [quickstart guide](quickstart-guide.md) of the documentation and the [examples](https://github.com/bunkerity/bunkerweb/tree/v1.5.10/examples) directory of the repository.
+    You will find concrete examples of multisite mode in the [advanced usages](advanced.md) of the documentation and the [examples](https://github.com/bunkerity/bunkerweb/tree/v1.6.0/examples) directory of the repository.
 
 ## Custom configurations
 
@@ -95,9 +123,16 @@ Another integral component of BunkerWeb is the ModSecurity Web Application Firew
 
 By leveraging custom configurations, you unlock a world of possibilities to tailor BunkerWeb's behavior and security measures precisely to your needs. Whether it's adjusting NGINX configurations or fine-tuning ModSecurity, BunkerWeb provides the flexibility to meet your unique challenges effectively.
 
+Managing custom configurations from the web User Interface is done through the **Configs** menu :
+
+<figure markdown>
+  ![Overview](assets/img/configs-ui.png){ align=center, width="800" }
+  <figcaption>Manage custom configurations from the web UI</figcaption>
+</figure>
+
 !!! info "Going further"
 
-    You will find concrete examples of custom configurations in the [quickstart guide](quickstart-guide.md) of the documentation and the [examples](https://github.com/bunkerity/bunkerweb/tree/v1.5.10/examples) directory of the repository.
+    You will find concrete examples of custom configurations in the [advanced usages](advanced.md#custom-configurations) of the documentation and the [examples](https://github.com/bunkerity/bunkerweb/tree/v1.6.0/examples) directory of the repository.
 
 ## Database
 
@@ -146,3 +181,109 @@ In essence, the scheduler serves as the brain of BunkerWeb, orchestrating variou
 Depending on the integration approach, the execution environment of the scheduler may differ. In container-based integrations, the scheduler is executed within its dedicated container, providing isolation and flexibility. On the other hand, for Linux-based integrations, the scheduler is self-contained within the bunkerweb service, simplifying the deployment and management process.
 
 By employing the scheduler, BunkerWeb streamlines the automation and coordination of essential tasks, enabling efficient and reliable operation of the entire system.
+
+If you are using the web User Interface, you can manage scheduler jobs by clicking on **Jobs** from the menu :
+
+<figure markdown>
+  ![Overview](assets/img/jobs-ui.png){ align=center, width="800" }
+  <figcaption>Manage jobs from the web UI</figcaption>
+</figure>
+
+
+**Instances healthcheck**
+
+Since the 1.6.0, the Scheduler possess a built-in healthcheck system, that will check the health of the instances. If an instance becomes unhealthy, the scheduler will stop sending the configuration to it. If the instance becomes healthy again, the scheduler will start sending the configuration to it again.
+
+The healthcheck interval is set by the `HEALTHCHECK_INTERVAL` environment variable with a default value of `30` which means that the scheduler will check the health of the instances every 30 seconds.
+
+## Templates
+
+BunkerWeb leverages the power of templates to simplify the configuration process and enhance flexibility. Templates provide a structured and standardized approach to defining settings and custom configurations, ensuring consistency and ease of use.
+
+- **Predefined templates**: The community version offers three predefined templates that encapsulate common custom  configurations and settings. These templates serve as a starting point for configuring BunkerWeb, enabling quick setup and deployment. The predefined templates are the following:
+    - **low**: A basic template that provides essential settings for web application protection.
+    - **medium**: A balanced template that offers a mix of security features and performance optimizations.
+    - **high**: An advanced template that focuses on robust security measures and comprehensive protection.
+
+- **Custom templates**: In addition to predefined templates, BunkerWeb allows users to create custom templates tailored to their specific requirements. Custom templates enable fine-tuning of settings and custom configurations, ensuring that BunkerWeb aligns perfectly with the user's needs.
+
+With the web User Interface, templates are available through **easy mode** when you add or edit a service :
+
+<figure markdown>
+  ![Overview](assets/img/templates-ui.png){ align=center, width="800" }
+  <figcaption>Templates usage from the web UI</figcaption>
+</figure>
+
+**Creating custom templates**
+
+Creating a custom template is a straightforward process that involves defining the desired settings, custom configurations and steps in a structured format.
+
+* **Template structure**: A custom template consists of a name, series of settings, custom configurations and optional steps. The template structure is defined in a JSON file that adheres to the specified format. The key components of a custom template include:
+    * **Settings**: A setting is defined with a name and corresponding value. This value will override the default value of the setting. **Only multisite settings are supported.**
+    * **Configs**: A custom configuration is a path to an NGINX configuration file that will be included as a custom configuration. To know where to place the custom configuration file, refer to the example of a plugin's tree below. **Only multisite configuration types are supported.**
+    * **Steps**: A step contains a title, subtitle, settings and custom configurations. Each step represents a configuration step that the user can follow to set up BunkerWeb according to the custom template in the web UI.
+
+!!! info "Specifications about steps"
+
+    If steps are declared, **it is not mandatory to include all the settings and custom configurations in the settings and configs sections**. keep in mind that when a setting or a custom configuration is declared in a step, the user will be allowed to make edits to it in the web UI.
+
+* **Template file**: The custom template is defined in a json file in a `templates` folder inside the plugin directory that adheres to the specified structure. The template file contains a name, the settings, custom configurations, and steps required to configure BunkerWeb according to the user's preferences.
+
+* **Selecting a template**: Once the custom template is defined, users can select it during the easy-mode configuration process of a service in the web UI. A template can also be selected with the `USE_TEMPLATE` setting in the configuration. The name of the template file (without the `.json` extension) should be specified as the value of the `USE_TEMPLATE` setting.
+
+Example of a custom template file:
+```json
+{
+    "name": "template name",
+	// optional
+    "settings": {
+        "SETTING_1": "value",
+        "SETTING_2": "value"
+    },
+	// optional
+    "configs": [
+        "modsec/false_positives.conf",
+        "modsec/non_editable.conf",
+		"modsec-crs/custom_rules.conf"
+    ],
+	// optional
+    "steps": [
+        {
+            "title": "Title 1",
+            "subtitle": "subtitle 1",
+            "settings": [
+                "SETTING_1"
+            ],
+            "configs": [
+                "modsec-crs/custom_rules.conf"
+            ]
+        },
+        {
+            "title": "Title 2",
+            "subtitle": "subtitle 2",
+            "settings": [
+                "SETTING_2"
+            ],
+            "configs": [
+                "modsec/false_positives.conf"
+            ]
+        }
+    ]
+}
+```
+
+Example of a plugin's tree including custom templates:
+```tree
+.
+├── plugin.json
+└── templates
+    ├── my_other_template.json
+    ├── my_template
+    │   └── configs
+    │       ├── modsec
+    │       │   ├── false_positives.conf
+    │       │   └── non_editable.conf
+    │       └── modsec-crs
+    │           └── custom_rules.conf
+    └── my_template.json
+```

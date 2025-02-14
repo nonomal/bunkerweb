@@ -15,7 +15,7 @@
       "type": "check"
     },
     "USE_PROXY_PROTOCOL": {
-      "context": "multisite",
+      "context": "global",
       "default": "no",
       "help": "Enable PROXY protocol communication.",
       "id": "use-proxy-protocol",
@@ -51,7 +51,7 @@
       "type": "check"
     },
     "REAL_IP_FROM_URLS": {
-      "context": "global",
+      "context": "multisite",
       "default": "",
       "help": "List of URLs containing trusted IPs / networks, separated with spaces, where proxied requests come from. Also supports file:// URLs and and auth basic using http://user:pass@url scheme.",
       "id": "real-ip-from-urls",
@@ -65,7 +65,8 @@
       "name": "realip-download",
       "file": "realip-download.py",
       "every": "hour",
-      "reload": true
+      "reload": true,
+      "async": true
     }
   ]
 }

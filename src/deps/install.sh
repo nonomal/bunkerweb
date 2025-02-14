@@ -18,7 +18,7 @@ NTASK="$(nproc)"
 # Compiling and installing lua
 echo "ℹ️ Compiling and installing lua-5.1.5"
 export CHANGE_DIR="/tmp/bunkerweb/deps/src/lua-5.1.5"
-do_and_check_cmd make -j "$NTASK" linux
+do_and_check_cmd make "CFLAGS=-O2 -Wall -fPIC -DLUA_USE_DLOPEN" "LFLAGS=-Wl,-rpath,/usr/share/bunkerweb/deps/lib" -j "$NTASK" linux
 do_and_check_cmd make INSTALL_TOP=/usr/share/bunkerweb/deps install
 
 # Compiling and installing libmaxminddb
@@ -195,6 +195,12 @@ do_and_check_cmd make PREFIX=/usr/share/bunkerweb/deps LUA_LIB_DIR=/usr/share/bu
 export CHANGE_DIR="/tmp/bunkerweb/deps/misc"
 do_and_check_cmd bash -c "mv ngx_http_modsecurity_access.c /tmp/bunkerweb/deps/src/modsecurity-nginx/src/"
 
+# Move brotli to ngx_brotli deps directory
+if [ ! -d "/tmp/bunkerweb/deps/src/ngx_brotli/deps" ] ; then
+	do_and_check_cmd mkdir /tmp/bunkerweb/deps/src/ngx_brotli/deps
+fi
+do_and_check_cmd mv /tmp/bunkerweb/deps/src/brotli /tmp/bunkerweb/deps/src/ngx_brotli/deps/brotli
+
 # Compile dynamic modules
 echo "ℹ️ Compiling and installing dynamic modules"
 CONFARGS="$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p')"
@@ -202,7 +208,7 @@ CONFARGS="${CONFARGS/-Os -fomit-frame-pointer -g/-Os}"
 CONFARGS="$(echo -n "$CONFARGS" | sed "s/--with-ld-opt=-Wl/--with-ld-opt='-lpcre -Wl'/")"
 CONFARGS="$(echo -n "$CONFARGS" | sed "s/--with-ld-opt='-Wl/--with-ld-opt='-lpcre -Wl/")"
 if [ "$OS" = "fedora" ] ; then
-	CONFARGS="$(echo -n "$CONFARGS" | sed "s/--with-ld-opt='.*'/--with-ld-opt=-lpcre/" | sed "s/--with-cc-opt='.*'//")"
+	CONFARGS="$(echo -n "$CONFARGS" | sed "s/--with-ld-opt='.*'/--with-ld-opt=-lpcre/" | sed "s/--with-cc-opt='.*'//" | sed "s/--without-engine//")"
 fi
 
 # Set CFALGS

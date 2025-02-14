@@ -9,3 +9,10 @@ node_modules
 .mypy_cache
 .cache/
 /package*.json
+src/ui/client/static
+src/ui/client/templates
+src/ui/static
+src/ui/templates
+src/ui/builder
+src/ui/client/builder/*.json
+src/ui/client/builder/*.txt

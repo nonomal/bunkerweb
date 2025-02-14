@@ -2,7 +2,7 @@ version: "3"
 
 services:
   mywp:
-    image: wordpress:5-apache
+    image: wordpress:6-apache
     volumes:
       - wp-data:/var/www/html
     networks:
@@ -23,9 +23,11 @@ services:
         - bunkerweb.USE_REVERSE_PROXY=yes
         - bunkerweb.REVERSE_PROXY_URL=/
         - bunkerweb.REVERSE_PROXY_HOST=http://mywp
+        # This is a CRS plugin specific to WordPress
+        - bunkerweb.MODSECURITY_CRS_PLUGIN_URLS=https://github.com/coreruleset/wordpress-rule-exclusions-plugin/archive/refs/tags/v1.0.1.tar.gz
 
   mydb:
-    image: mariadb
+    image: mariadb:11
     volumes:
       - db-data:/var/lib/mysql
     networks:

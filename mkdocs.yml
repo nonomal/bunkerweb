@@ -11,7 +11,8 @@ nav:
   - Concepts: 'concepts.md'
   - Integrations: 'integrations.md'
   - Quickstart guide: 'quickstart-guide.md'
-  - Security tuning: 'security-tuning.md'
+  - Advanced usages: 'advanced.md'
+  # - Security tuning: 'security-tuning.md'
   - Settings: 'settings.md'
   - Web UI: 'web-ui.md'
   - Upgrading: 'upgrading.md'
@@ -36,6 +37,9 @@ theme:
 
 extra_css:
   - assets/extra.css
+
+extra_javascript:
+  - assets/extra.js
 
 markdown_extensions:
   - attr_list
